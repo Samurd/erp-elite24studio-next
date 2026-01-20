@@ -25,6 +25,7 @@ const routePermissions: Record<string, string> = {
 };
 
 export async function proxy(request: NextRequest) {
+    const AUTH_URL = process.env.BETTER_AUTH_URL!;
     const sessionCookie = getSessionCookie(request);
     const { pathname } = request.nextUrl;
 
@@ -42,7 +43,7 @@ export async function proxy(request: NextRequest) {
         try {
             // Fetch session data from API to check permissions
             // We pass the cookie header to authenticate the request
-            const response = await fetch(`${request.nextUrl.origin}/api/session`, {
+            const response = await fetch(`${AUTH_URL}/api/session`, {
                 headers: {
                     cookie: request.headers.get("cookie") || "",
                 },
