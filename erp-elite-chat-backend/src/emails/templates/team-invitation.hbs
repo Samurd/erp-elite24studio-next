@@ -1,0 +1,23 @@
+{{#> main}}
+<p>Has sido invitado a unirte al equipo <strong>{{team_name}}</strong>!</p>
+
+{{#if is_registration_enabled}}
+<p>Si no tienes una cuenta, puedes crear una haciendo clic en el botón de abajo. Después de crear una cuenta, puedes
+    hacer clic en el botón de aceptación de invitación en este correo electrónico para aceptar la invitación del equipo:
+</p>
+
+<div style="text-align: center;">
+    <a href="{{registerUrl}}" class="button">Crear Cuenta</a>
+</div>
+
+<p>Si ya tienes una cuenta, puedes aceptar esta invitación haciendo clic en el botón de abajo:</p>
+{{else}}
+<p>Puedes aceptar esta invitación haciendo clic en el botón de abajo:</p>
+{{/if}}
+
+<div style="text-align: center;">
+    <a href="{{acceptUrl}}" class="button">Aceptar Invitación</a>
+</div>
+
+<p>Si no esperabas recibir una invitación a este equipo, puedes descartar este correo electrónico.</p>
+{{/main}}

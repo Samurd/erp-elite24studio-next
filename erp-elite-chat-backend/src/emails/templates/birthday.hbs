@@ -1,0 +1,33 @@
+{{#> main}}
+<style>
+    .header {
+        background-color: #8b5cf6 !important;
+        border-bottom: none !important;
+        color: white !important;
+        text-align: center;
+    }
+
+    .details {
+        background-color: #f9fafb;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        text-align: left;
+        border-left: 4px solid #8b5cf6;
+    }
+</style>
+
+<div style="text-align: center;">
+    <h1 style="margin: 0; font-size: 24px;">🎉 ¡Feliz Cumpleaños! 🎂</h1>
+</div>
+
+<div style="text-align: center; padding: 20px;">
+    <p style="font-size: 18px; color: #4b5563;">{{body}}</p>
+
+    {{#if image_url}}
+    <div class="image-container">
+        <img src="{{image_url}}" alt="Tarjeta de Cumpleaños">
+    </div>
+    {{/if}}
+</div>
+{{/main}}

@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "migrate": "node scripts/run-migrations.js",
+    "migrate:dev": "docker exec -i erp-elite-mysql mysql -u root elite < drizzle/migrations/0001_add_email_verified.sql"
+  }
+}

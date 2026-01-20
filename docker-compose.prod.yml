@@ -1,0 +1,109 @@
+# Docker Compose for Production-like Local Testing
+# Usage: docker compose -f docker-compose.prod.yml up --build
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: erp-elite-postgres
+    environment:
+      POSTGRES_DB: elite
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - erp-elite-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NATS with JetStream
+  nats:
+    image: nats:latest
+    container_name: erp-elite-nats
+    command: "-js -m 8222"
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # Monitoring
+    networks:
+      - erp-elite-network
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Database Migrations (runs once then exits)
+  migrations:
+    build:
+      context: ./erp-elite-next
+      dockerfile: Dockerfile
+      target: migrations
+    command: /bin/sh -c "bun run db:migrate && bun run db:seed"
+    container_name: erp-elite-migrations
+    env_file: .env.prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp-elite-network
+    restart: "no"
+
+  # NestJS Backend (Chat/Notifications with WebSockets + NATS)
+  backend:
+    build:
+      context: ./erp-elite-chat-backend
+      dockerfile: Dockerfile
+    container_name: erp-elite-backend
+    env_file: .env.prod
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - erp-elite-network
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./erp-elite-next
+      dockerfile: Dockerfile
+      target: runner
+    container_name: erp-elite-frontend
+    env_file: .env.prod
+    environment:
+      # Overrides or additional vars if needed, but .env.prod covers most.
+      # STORAGE_DRIVER needs to be ensured if different from env file.
+      - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-local}
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    networks:
+      - erp-elite-network
+    restart: unless-stopped
+    volumes:
+      - uploads_data:/app/public/uploads
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  erp-elite-network:
+    driver: bridge

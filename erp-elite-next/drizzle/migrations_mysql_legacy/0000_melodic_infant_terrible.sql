@@ -1,0 +1,2 @@
+-- Migration skipped because tables already exist from introspection/sync
+-- Use db:push or db:sync for schema management if not using migrations strictly

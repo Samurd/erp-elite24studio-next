@@ -1,0 +1,15 @@
+{{#> main}}
+<style>
+    .button {
+        background-color: #007bff !important;
+    }
+</style>
+
+<p>{{body}}</p>
+
+{{#if actionUrl}}
+<div style="text-align: center;">
+    <a href="{{actionUrl}}" class="button">Ver Detalles</a>
+</div>
+{{/if}}
+{{/main}}

@@ -1,0 +1,42 @@
+{{#> main}}
+<style>
+    .header {
+        border-bottom: 3px solid #10b981 !important;
+    }
+
+    .message-details {
+        background-color: #ecfdf5;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 15px 0;
+        border-left: 4px solid #10b981;
+    }
+
+    .button {
+        background-color: #059669 !important;
+    }
+</style>
+
+<p>{{body}}</p>
+
+{{#if sender_name}}
+<div class="message-details">
+    <strong>De:</strong> {{sender_name}}<br>
+    {{#if message_content}}
+    <strong>Mensaje:</strong> {{message_content}}
+    {{/if}}
+</div>
+{{/if}}
+
+{{#if image_url}}
+<div class="image-container">
+    <img src="{{image_url}}" alt="Nuevo Mensaje">
+</div>
+{{/if}}
+
+{{#if actionUrl}}
+<div style="text-align: center;">
+    <a href="{{actionUrl}}" class="button">Ver Mensaje</a>
+</div>
+{{/if}}
+{{/main}}

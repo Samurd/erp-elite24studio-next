@@ -1,0 +1,45 @@
+{{#> main}}
+<style>
+    .header {
+        border-bottom: 3px solid #eab308 !important;
+    }
+
+    .task-details {
+        background-color: #f9fafb;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 15px 0;
+        border-left: 4px solid #eab308;
+    }
+
+    .button {
+        background-color: #ca8a04 !important;
+    }
+</style>
+
+<p>{{body}}</p>
+
+{{#if task_title}}
+<div class="task-details">
+    <strong>Tarea:</strong> {{task_title}}<br>
+    {{#if due_date}}
+    <strong>Vencimiento:</strong> {{due_date}}<br>
+    {{/if}}
+    {{#if priority}}
+    <strong>Prioridad:</strong> {{priority}}
+    {{/if}}
+</div>
+{{/if}}
+
+{{#if image_url}}
+<div class="image-container">
+    <img src="{{image_url}}" alt="Imagen de la tarea">
+</div>
+{{/if}}
+
+{{#if actionUrl}}
+<div style="text-align: center;">
+    <a href="{{actionUrl}}" class="button">Ver Tarea</a>
+</div>
+{{/if}}
+{{/main}}

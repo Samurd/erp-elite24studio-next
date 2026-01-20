@@ -1,0 +1,28 @@
+{{#> main}}
+<p>{{body}}</p>
+
+{{#if approval_name}}
+<div
+    style="background-color: #eff6ff; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #3b82f6;">
+    <strong>Solicitud:</strong> {{approval_name}}<br>
+    {{#if priority}}
+    <strong>Prioridad:</strong> {{priority}}<br>
+    {{/if}}
+    {{#if requester}}
+    <strong>Solicitante:</strong> {{requester}}
+    {{/if}}
+</div>
+{{/if}}
+
+{{#if image_url}}
+<div class="image-container">
+    <img src="{{image_url}}" alt="Imagen de la solicitud">
+</div>
+{{/if}}
+
+{{#if actionUrl}}
+<div style="text-align: center;">
+    <a href="{{actionUrl}}" class="button">Ver Solicitud</a>
+</div>
+{{/if}}
+{{/main}}

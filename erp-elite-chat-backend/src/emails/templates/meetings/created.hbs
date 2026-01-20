@@ -1,0 +1,27 @@
+{{#> main}}
+<h2 style="color: #2c3e50;">Se ha programado una nueva reunión</h2>
+
+<p>Hola,</p>
+
+<p>Te informamos que se ha creado una nueva reunión en el sistema que podría interesarte.</p>
+
+<div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <p><strong>Título:</strong> {{meeting.title}}</p>
+    <p><strong>Fecha:</strong> {{meeting.date}}</p>
+    <p><strong>Hora:</strong> {{meeting.start_time}} - {{meeting.end_time}}</p>
+    {{#if meeting.team}}
+    <p><strong>Equipo:</strong> {{meeting.team.name}}</p>
+    {{/if}}
+    {{#if meeting.url}}
+    <p><strong>Link de Reunión:</strong> <a href="{{meeting.url}}">{{meeting.url}}</a></p>
+    {{/if}}
+</div>
+
+<p>Para ver más detalles, por favor visita el siguiente enlace:</p>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{actionUrl}}" class="button">Ver Reunión</a>
+</div>
+
+<p>Saludos,<br>El equipo de ERP Elite</p>
+{{/main}}

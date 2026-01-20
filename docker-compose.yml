@@ -1,0 +1,122 @@
+services:
+
+  # redis:
+  #   image: redis:alpine
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - erp-elite-network
+
+  # Servicio PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: erp-elite-postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-appweb}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    command:
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-electric.sql:/docker-entrypoint-initdb.d/init-electric.sql
+    networks:
+      - erp-elite-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # Servicio pgAdmin para administración de DB
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: erp-elite-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-root}
+    ports:
+      - "5051:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp-elite-network
+
+  # Servicio NATS con JetStream
+  nats:
+    image: nats:latest
+    container_name: erp-elite-nats
+    command: "-js"
+    ports:
+      - "4222:4222"
+      - "18222:8222"
+    networks:
+      - erp-elite-network
+
+  # Servicio MinIO para almacenamiento de archivos (S3 compatible)
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: erp-elite-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password}
+    ports:
+      - "9000:9000" # API S3
+      - "9001:9001" # Consola Web
+    volumes:
+      - minio_data:/data
+    networks:
+      - erp-elite-network
+
+  # Servicio ElectricSQL para sincronización local-first
+  electric:
+    image: electricsql/electric:latest
+    container_name: erp-elite-electric
+    environment:
+      DATABASE_URL: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-password}@postgres:5432/${DB_DATABASE:-appweb}?sslmode=disable"
+      # Not suitable for production. Only use insecure mode in development or if you've otherwise secured the Electric API.
+      # See https://electric-sql.com/docs/guides/security
+      ELECTRIC_INSECURE: true
+    ports:
+      - "3000:3000" # Electric sync service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erp-elite-network
+
+  # # Servicio Nextcloud
+  # nextcloud:
+  #   image: nextcloud
+  #   container_name: erp-elite-nextcloud
+  #   ports:
+  #     - "8888:80"
+  #   environment:
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_DB: nextcloud
+  #     POSTGRES_USER: ${DB_USERNAME:-postgres}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   volumes:
+  #     - nextcloud_data:/var/www/html
+  #   networks:
+  #     - erp-elite-network
+
+volumes:
+  postgres_data:
+  minio_data:
+  # nextcloud_data:
+
+networks:
+  erp-elite-network:
+    driver: bridge

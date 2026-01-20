@@ -1,0 +1,10 @@
+erp-elite-chat-backend/node_modules
+erp-elite-chat-backend/dist
+erp-elite-chat-backend/.env
+erp-elite-next/node_modules
+erp-elite-next/dist
+erp-elite-next/.env
+erp-elite-next/.next
+/erp-elite-good
+
+.env

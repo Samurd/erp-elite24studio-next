@@ -1,0 +1,273 @@
+import {
+    LayoutDashboard,
+    TrendingUp,
+    Database,
+    CheckCircle,
+    HeartHandshake,
+    Headset,
+    FileText,
+    Calculator,
+    ShoppingBag,
+    Users,
+    FileCheck,
+    Award,
+    FileSignature,
+    FolderKanban,
+    HardHat,
+    BarChart2,
+    Megaphone,
+    ClipboardList,
+    Calendar,
+    Cloud,
+    Video
+} from "lucide-react";
+
+export interface NavItem {
+    title: string;
+    description?: string;
+    href: string;
+    icon?: any;
+    permission?: string;
+}
+
+export const navigationItems: NavItem[] = [
+    {
+        title: "Panel-Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+    },
+    {
+        title: "Finanzas",
+        description: "Contabilidad Empresarial - Ventas - Gastos",
+        href: "/finances",
+        icon: TrendingUp,
+        permission: "finanzas",
+    },
+    {
+        title: "Base de datos",
+        description: "CRM Clientes - Alianzas - Partners - Empleados",
+        href: "/contacts",
+        icon: Database,
+        permission: "contactos",
+    },
+    {
+        title: "Aprobaciones",
+        description: "Tareas - Solicitudes Revision",
+        href: "/approvals",
+        icon: CheckCircle,
+        permission: "aprobaciones",
+    },
+    {
+        title: "Donaciones",
+        description: "Fundaciones Aliadas",
+        href: "/donations/campaigns",
+        icon: HeartHandshake,
+        permission: "donaciones",
+    },
+    // Submodules for Donations
+    {
+        title: "Campañas",
+        description: "Gestionar campañas de donación",
+        href: "/donations/campaigns",
+        permission: "donaciones",
+    },
+    {
+        title: "Donaciones (Registros)",
+        description: "Ver registros de donaciones",
+        href: "/donations/donations",
+        permission: "donaciones",
+    },
+    {
+        title: "Voluntariado",
+        description: "Gestionar voluntarios",
+        href: "/donations/volunteers",
+        permission: "donaciones",
+    },
+    {
+        title: "Alianzas/Convenios",
+        description: "Gestionar alianzas estratégicas",
+        href: "/donations/alliances",
+        permission: "donaciones",
+    },
+    {
+        title: "Control Presupuestos APU",
+        description: "Administrar presupuestos APU",
+        href: "/donations/apu-campaigns",
+        permission: "donaciones",
+    },
+    {
+        title: "Registro-Casos",
+        description: "Registros Casos Comerciales",
+        href: "/case-records",
+        icon: Headset,
+        permission: "registro-casos",
+    },
+    {
+        title: "Reportes",
+        description: "Notificaciones",
+        href: "/reports",
+        icon: FileText,
+        permission: "reportes",
+    },
+    {
+        title: "Cotizaciones",
+        description: "Presupuestos",
+        href: "/quotes",
+        icon: Calculator,
+        permission: "cotizaciones",
+    },
+    {
+        title: "Suscripciones",
+        description: "Todos los Gastos Fijos",
+        href: "/subscriptions",
+        icon: ShoppingBag,
+        permission: "suscripciones",
+    },
+    {
+        title: "RR.HH/ Contratos",
+        description: "Reclutamiento, Base de Datos empleados",
+        href: "/rrhh/contracts",
+        icon: Users,
+        permission: "rrhh",
+    },
+    // Submodules for RRHH
+    {
+        title: "Contratos",
+        description: "Gestión de contratos laborales",
+        href: "/rrhh/contracts",
+        permission: "rrhh",
+    },
+    {
+        title: "Empleados",
+        description: "Base de datos de empleados",
+        href: "/rrhh/employees",
+        permission: "rrhh",
+    },
+    {
+        title: "Reclutamiento",
+        description: "Vacantes y postulantes",
+        href: "/rrhh/vacancies",
+        permission: "rrhh",
+    },
+    {
+        title: "Entrevistas",
+        description: "Gestión de entrevistas",
+        href: "/rrhh/interviews",
+        permission: "rrhh",
+    },
+    {
+        title: "Calendario Entrevistas",
+        description: "Calendario de entrevistas programadas",
+        href: "/rrhh/interviews/calendar",
+        permission: "rrhh",
+    },
+    {
+        title: "Inducciones",
+        description: "Proceso de inducción",
+        href: "/rrhh/inductions",
+        permission: "rrhh",
+    },
+    {
+        title: "Kits Bienvenida",
+        description: "Entrega de kits de bienvenida",
+        href: "/rrhh/kits",
+        permission: "rrhh",
+    },
+    {
+        title: "Cumpleaños",
+        description: "Registro de cumpleaños",
+        href: "/rrhh/birthdays",
+        permission: "rrhh",
+    },
+    {
+        title: "Off-boarding",
+        description: "Proceso de salida",
+        href: "/rrhh/offboardings",
+        permission: "rrhh",
+    },
+    {
+        title: "Vacaciones/Permisos med.",
+        description: "Gestión de vacaciones y permisos",
+        href: "/rrhh/holidays",
+        permission: "rrhh",
+    },
+    {
+        title: "Asistencia",
+        description: "Control de asistencia",
+        href: "/rrhh/attendances",
+        permission: "rrhh",
+    },
+    {
+        title: "Politicas",
+        description: "Empresariales - Equipos",
+        href: "/policies",
+        icon: FileCheck,
+        permission: "politicas",
+    },
+    {
+        title: "Certificados",
+        description: "Empresariales - Bancarios",
+        href: "/certificates",
+        icon: Award,
+        permission: "certificados",
+    },
+    {
+        title: "Tramites y Licencias",
+        description: "Gestion documental de licencias para construcción",
+        href: "/licenses",
+        icon: FileSignature,
+        permission: "licencias",
+    },
+    {
+        title: "Proyectos",
+        description: "Todas las Categorias",
+        href: "/projects",
+        icon: FolderKanban,
+        permission: "proyectos",
+    },
+    {
+        title: "Obras Construcción",
+        description: "Gestion en Obra ELITE 24",
+        href: "/worksites",
+        icon: HardHat,
+        permission: "obras",
+    },
+    {
+        title: "KPIS/Control calidad",
+        description: "Indicadores KPIS - Indicador clave de rendimiento",
+        href: "/kpis",
+        icon: BarChart2,
+        permission: "kpis",
+    },
+    {
+        title: "Marketing Elite",
+        description: "Estrategias, Gestion, Registros - Novedades",
+        href: "/marketing/strategies",
+        icon: Megaphone,
+        permission: "marketing",
+    },
+    {
+        title: "Planner Task",
+        href: "/planner",
+        icon: ClipboardList,
+    },
+    {
+        title: "Agenda Personal",
+        description: "Eventos - recordatorios",
+        href: "/calendar",
+        icon: Calendar,
+    },
+    {
+        title: "Cloud",
+        description: "Documents",
+        href: "/cloud",
+        icon: Cloud,
+        permission: "cloud",
+    },
+    {
+        title: "Reuniones",
+        href: "/meetings",
+        icon: Video,
+        permission: "reuniones",
+    },
+];
