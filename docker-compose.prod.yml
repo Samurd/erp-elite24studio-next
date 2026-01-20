@@ -46,7 +46,7 @@ services:
       target: migrations
     command: /bin/sh -c "bun run db:migrate && bun run db:seed"
     container_name: erp-elite-migrations
-    env_file: .env.prod
+    env_file: .env
     # depends_on:
     #   postgres:
     #     condition: service_healthy
@@ -60,7 +60,7 @@ services:
       context: ./erp-elite-chat-backend
       dockerfile: Dockerfile
     container_name: erp-elite-backend
-    env_file: .env.prod
+    env_file: .env
     ports:
       - "3001:3001"
     depends_on:
@@ -81,11 +81,11 @@ services:
       dockerfile: Dockerfile
       target: runner
     container_name: erp-elite-frontend
-    env_file: .env.prod
+    env_file: .env
     environment:
       # Overrides or additional vars if needed, but .env.prod covers most.
       # STORAGE_DRIVER needs to be ensured if different from env file.
-      - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-s3 }
+      - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-s3}
       - PORT=3000
     ports:
       - "3000:3000"
