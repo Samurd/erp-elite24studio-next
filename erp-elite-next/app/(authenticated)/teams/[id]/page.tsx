@@ -25,7 +25,7 @@ export default async function TeamPage({
     // ClientPage needs initial data.
 
     // Let's do a quick fetch to our own API to get the aggregated data.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.FRONTEND_DOMAIN || 'http://localhost:3000';
     const res = await fetch(`${baseUrl}/api/teams/${id}`, {
         headers: {
             Cookie: (await headers()).get('Cookie') || ''
