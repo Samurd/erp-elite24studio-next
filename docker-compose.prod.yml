@@ -88,6 +88,8 @@ services:
       context: ./erp-elite-next
       dockerfile: Dockerfile
       target: runner
+      args:
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL}
     container_name: erp-elite-frontend
     env_file: .env
     environment:

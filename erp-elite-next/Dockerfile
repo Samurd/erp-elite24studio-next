@@ -1,3 +1,4 @@
+
 # syntax=docker/dockerfile:1
 FROM oven/bun:1 AS base
 WORKDIR /app
@@ -9,6 +10,9 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lock
 
 # Build the application
 FROM base AS builder
+ARG NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
