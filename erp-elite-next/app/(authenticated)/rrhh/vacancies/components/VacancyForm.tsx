@@ -67,7 +67,7 @@ export function VacancyForm({
     })
 
     useEffect(() => {
-        console.log('VacancyForm FULL initialData:', initialData);
+        // console.log('VacancyForm FULL initialData:', initialData);
         if (initialData) {
             // Extract IDs properly from the API response
             const contractTypeId = initialData.contract_type_id?.toString()
@@ -83,14 +83,14 @@ export function VacancyForm({
                 || initialData.user?.id?.toString() // Fallback to nested user object if flattened ID not present
                 || "";
 
-            console.log('--- DEBUG FORM VALUES ---');
-            console.log('Raw contractTypeId:', initialData.contract_type_id, typeof initialData.contract_type_id);
-            console.log('Raw statusId:', initialData.status_id, typeof initialData.status_id);
-            console.log('Raw userId:', initialData.user_id, typeof initialData.user_id);
-            console.log('Converted contractTypeId:', contractTypeId);
-            console.log('Converted statusId:', statusId);
-            console.log('Converted userId:', userId);
-            console.log('-------------------------');
+            // console.log('--- DEBUG FORM VALUES ---');
+            // console.log('Raw contractTypeId:', initialData.contract_type_id, typeof initialData.contract_type_id);
+            // console.log('Raw statusId:', initialData.status_id, typeof initialData.status_id);
+            // console.log('Raw userId:', initialData.user_id, typeof initialData.user_id);
+            // console.log('Converted contractTypeId:', contractTypeId);
+            // console.log('Converted statusId:', statusId);
+            // console.log('Converted userId:', userId);
+            // console.log('-------------------------');
 
             form.reset({
                 title: initialData.title || "",
@@ -102,7 +102,7 @@ export function VacancyForm({
                 description: initialData.description || "",
             })
         } else {
-            console.log('No initialData, resetting to defaults');
+            // console.log('No initialData, resetting to defaults');
             form.reset({
                 title: "",
                 area: "",
@@ -160,7 +160,7 @@ export function VacancyForm({
     })
 
     const onSubmit = (data: VacancyFormValues) => {
-        console.log('Submitting vacancy data:', data);
+        // console.log('Submitting vacancy data:', data);
         mutation.mutate(data)
     }
 

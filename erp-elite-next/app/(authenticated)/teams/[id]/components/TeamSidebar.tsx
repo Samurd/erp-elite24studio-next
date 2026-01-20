@@ -59,13 +59,13 @@ export function TeamSidebar({
         if (!socket || !currentUserId) return;
 
         const handleChannelMessageNotification = (data: any) => {
-            console.log('🔔 TeamSidebar received channelMessageNotification:', {
-                channelId: data.channelId,
-                userId: data.userId,
-                currentUserId,
-                activeChannelId,
-                shouldIncrement: data.userId !== currentUserId && data.channelId !== activeChannelId
-            });
+            // console.log('🔔 TeamSidebar received channelMessageNotification:', {
+            //     channelId: data.channelId,
+            //     userId: data.userId,
+            //     currentUserId,
+            //     activeChannelId,
+            //     shouldIncrement: data.userId !== currentUserId && data.channelId !== activeChannelId
+            // });
 
             // Only increment unread if:
             // 1. Message is NOT from current user
@@ -75,7 +75,7 @@ export function TeamSidebar({
                     ...prev,
                     [data.channelId]: (prev[data.channelId] || 0) + 1
                 }));
-                console.log('✅ Incremented unread count for channel:', data.channelId);
+                // console.log('✅ Incremented unread count for channel:', data.channelId);
             }
         };
 

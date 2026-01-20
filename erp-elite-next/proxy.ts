@@ -59,7 +59,7 @@ export async function proxy(request: NextRequest) {
                 );
 
                 if (!hasPermission) {
-                    console.log(`Access denied to ${pathname}. Missing permission: ${requiredPermission}`);
+                    // console.log(`Access denied to ${pathname}. Missing permission: ${requiredPermission}`);
                     return NextResponse.redirect(new URL("/dashboard", request.url));
                 }
             }

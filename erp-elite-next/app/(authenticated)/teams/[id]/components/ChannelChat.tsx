@@ -159,7 +159,7 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
         };
 
         const handleReactionUpdated = (data: { messageId: number, reactions: any[] }) => {
-            console.log('🔔 socket:reactionUpdated received', data);
+            // console.log('🔔 socket:reactionUpdated received', data);
 
             const updateMessage = (m: any) => {
                 if (String(m.id) === String(data.messageId)) {
@@ -172,7 +172,7 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
                         // Ensure count is correct
                         count: r.userIds?.length || r.users?.length || r.count || 0
                     }));
-                    console.log(`✅ Updating message ${m.id} reactions:`, updatedReactions);
+                    // console.log(`✅ Updating message ${m.id} reactions:`, updatedReactions);
                     return { ...m, reactions: updatedReactions };
                 }
                 return m;
@@ -181,7 +181,7 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
             setMessages(prev => {
                 if (!Array.isArray(prev)) return prev;
                 const updated = prev.map(updateMessage);
-                console.log('📝 Messages state updated, count:', updated.length);
+                // console.log('📝 Messages state updated, count:', updated.length);
                 return updated;
             });
 

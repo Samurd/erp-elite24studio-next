@@ -76,10 +76,10 @@ export default function VacanciesPage() {
     const { data: rrhhUsers = [] } = useQuery<{ id: string; name: string; email: string; profilePhotoPath?: string }[]>({
         queryKey: ["rrhhUsers"],
         queryFn: async () => {
-            console.log("Fetching RRHH users...")
+            // console.log("Fetching RRHH users...")
             const res = await fetch("/api/rrhh/options?slug=users")
             const data = await res.json()
-            console.log("RRHH Users fetched:", data)
+            // console.log("RRHH Users fetched:", data)
             return data
         }
     })
@@ -128,7 +128,7 @@ export default function VacanciesPage() {
         // Fetch full vacancy data with relations
         const res = await fetch(`/api/rrhh/vacancies/${vacancy.id}`)
         const fullData = await res.json()
-        console.log('Full vacancy data loaded:', fullData)
+        // console.log('Full vacancy data loaded:', fullData)
         setSelectedVacancy(fullData)
         setIsVacancyModalOpen(true)
     }

@@ -119,7 +119,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
     // Populate form when project data loads
     useEffect(() => {
         if (project && isEditing) {
-            console.log("Loading project data into form:", project);
+            // console.log("Loading project data into form:", project);
 
             const formData = {
                 name: project.name || "",
@@ -133,7 +133,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                 teamId: project.teamId?.toString() || "none",
             };
 
-            console.log("Resetting form with:", formData);
+            // console.log("Resetting form with:", formData);
             form.reset(formData);
 
             // Load existing stages
@@ -519,7 +519,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                                     modelId={project.id}
                                     modelType="Project"
                                     onUpdate={() => {
-                                        console.log("Files updated, invalidating query");
+                                        // console.log("Files updated, invalidating query");
                                         queryClient.invalidateQueries({ queryKey: ["project", projectId] });
                                     }}
                                 />

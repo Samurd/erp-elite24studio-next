@@ -170,7 +170,7 @@ class LocalStorageDriver implements StorageDriver {
 
         // Ensure folder exists
         const targetDir = path.join(this.uploadDir, folder);
-        console.log("LocalStorageDriver: targetDir", targetDir);
+        // console.log("LocalStorageDriver: targetDir", targetDir);
 
         if (!fs.existsSync(targetDir)) {
             try {
@@ -182,7 +182,7 @@ class LocalStorageDriver implements StorageDriver {
         }
 
         const filePath = path.join(targetDir, filename);
-        console.log("LocalStorageDriver: writing to", filePath);
+        // console.log("LocalStorageDriver: writing to", filePath);
 
         try {
             fs.writeFileSync(filePath, buffer);

@@ -331,7 +331,7 @@ function GeneralSettings({ team, isOwner }: { team: any, isOwner: boolean }) {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        console.log("Updating team with:", { name, description, isPublic, photo_url });
+        // console.log("Updating team with:", { name, description, isPublic, photo_url });
         try {
             const res = await fetch(`/api/teams/${team.id}`, {
                 method: 'PUT',

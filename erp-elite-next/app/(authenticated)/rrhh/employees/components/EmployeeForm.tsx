@@ -166,14 +166,14 @@ export function EmployeeForm({
                     setCurrentData(freshData);
                 }
             } catch (error) {
-                console.error("Error refreshing employee data:", error);
+                // console.error("Error refreshing employee data:", error);
             }
         }
     };
 
     useEffect(() => {
         if (currentData) {
-            console.log("Resetting form with currentData:", currentData);
+            // console.log("Resetting form with currentData:", currentData);
             form.reset({
                 full_name: currentData.fullName || currentData.full_name || "",
                 job_title: currentData.jobTitle || currentData.job_title || "",

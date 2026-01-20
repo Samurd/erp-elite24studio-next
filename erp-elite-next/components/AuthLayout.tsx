@@ -26,12 +26,12 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
     const [loading, setLoading] = useState(true);
 
     const checkSession = useCallback(async () => {
-        console.log("AuthLayout: checkSession running");
+        // console.log("AuthLayout: checkSession running");
         try {
             const session = await authClient.getSession();
 
             if (!session?.data?.user) {
-                console.log("AuthLayout: No session, redirecting");
+                // console.log("AuthLayout: No session, redirecting");
                 router.push("/login");
                 return;
             }
@@ -40,7 +40,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
             const response = await fetch("/api/session", { cache: "no-store" });
             if (response.ok) {
                 const sessionData: ApiSessionData = await response.json();
-                console.log("AuthLayout: Fetched user image:", sessionData.user.image);
+                // console.log("AuthLayout: Fetched user image:", sessionData.user.image);
                 setUser(sessionData.user); // Use fresh user data from DB
                 setUserRole(sessionData.roleName || "Usuario");
 
@@ -59,20 +59,20 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
                 setPermissions(permsMap);
             }
         } catch (error) {
-            console.error("Error fetching session data:", error);
+            // console.error("Error fetching session data:", error);
         } finally {
             setLoading(false);
         }
     }, [router]);
 
     useEffect(() => {
-        console.log("AuthLayout: Mounted");
+        // console.log("AuthLayout: Mounted");
         checkSession();
         return () => console.log("AuthLayout: Unmounted");
     }, [checkSession]);
 
     const refreshSession = async () => {
-        console.log("AuthLayout: refreshing session...");
+        // console.log("AuthLayout: refreshing session...");
         await checkSession();
     };
 
