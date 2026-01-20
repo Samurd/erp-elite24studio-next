@@ -90,6 +90,7 @@ services:
       target: runner
       args:
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: erp-elite-frontend
     env_file: .env
     environment:

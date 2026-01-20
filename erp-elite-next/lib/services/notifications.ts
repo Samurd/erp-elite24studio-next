@@ -1,4 +1,4 @@
-const API_URL = process.env.BACKEND_DOMAIN;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type Notification = {
     id: number;
