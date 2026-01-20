@@ -51,6 +51,7 @@ services:
     #   postgres:
     #     condition: service_healthy
     networks:
+      - dokploy-network
       - erp-elite-network
     restart: "no"
 
@@ -71,8 +72,15 @@ services:
       migrations:
         condition: service_completed_successfully
     networks:
+      - dokploy-network
       - erp-elite-network
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.erp-web.rule=Host(`${BACKEND_DOMAIN}`)"
+      - "traefik.http.routers.erp-web.entrypoints=websecure"
+      - "traefik.http.routers.erp-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.erp-web.loadbalancer.server.port=3001"
 
   # Next.js Frontend
   frontend:
@@ -86,9 +94,9 @@ services:
       # Overrides or additional vars if needed, but .env.prod covers most.
       # STORAGE_DRIVER needs to be ensured if different from env file.
       - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-s3}
-      - PORT=3000
+      - PORT=3002
     ports:
-      - "3000:3000"
+      - "3002:3002"
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -96,7 +104,14 @@ services:
         condition: service_started
     networks:
       - erp-elite-network
+      - dokploy-network
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.erp-web.rule=Host(`${FRONTEND_DOMAIN}`)"
+      - "traefik.http.routers.erp-web.entrypoints=websecure"
+      - "traefik.http.routers.erp-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.erp-web.loadbalancer.server.port=3002"
     # volumes:
     #   # - uploads_data:/app/public/uploads
 
@@ -107,3 +122,6 @@ services:
 networks:
   erp-elite-network:
     driver: bridge
+  dokploy-network:
+    external: true
+    name: dokploy-network
