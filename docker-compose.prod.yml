@@ -47,9 +47,9 @@ services:
     command: /bin/sh -c "bun run db:migrate && bun run db:seed"
     container_name: erp-elite-migrations
     env_file: .env.prod
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
     networks:
       - erp-elite-network
     restart: "no"
@@ -64,8 +64,8 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      postgres:
-        condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
       nats:
         condition: service_started
       migrations:
@@ -85,7 +85,7 @@ services:
     environment:
       # Overrides or additional vars if needed, but .env.prod covers most.
       # STORAGE_DRIVER needs to be ensured if different from env file.
-      - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-local}
+      - STORAGE_DRIVER=${FILESYSTEM_DRIVER:-s3 }
       - PORT=3000
     ports:
       - "3000:3000"
