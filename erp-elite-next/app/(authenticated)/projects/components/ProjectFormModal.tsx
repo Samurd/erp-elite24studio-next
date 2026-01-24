@@ -456,7 +456,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                                             <FormControl>
                                                 <RichSelect
                                                     options={options?.users || []}
-                                                    value={field.value && field.value !== "none" ? parseInt(field.value) : undefined} // Users might have string IDs? Let's check schema/api return. Usually users.id is int.
+                                                    value={field.value && field.value !== "none" ? field.value : undefined}
                                                     onValueChange={(val) => field.onChange(val ? val.toString() : "none")}
                                                     placeholder="Seleccionar responsable"
                                                     showAvatar={true}

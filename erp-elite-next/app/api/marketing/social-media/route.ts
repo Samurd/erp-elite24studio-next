@@ -86,7 +86,7 @@ export async function POST(request: Request) {
             mediums: body.mediums,
             contentType: body.content_type,
             scheduledDate: body.scheduled_date || null,
-            projectId: body.project_id ? parseInt(body.project_id) : null,
+            projectId: body.project_id && !isNaN(parseInt(body.project_id)) ? parseInt(body.project_id) : null,
             responsibleId: body.responsible_id || null,
             statusId: parseInt(body.status_id),
             comments: body.comments,

@@ -37,6 +37,8 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
             return res.json()
         },
         enabled: open && !!initialPost?.id,
+        staleTime: 0,
+        refetchOnMount: true,
     })
 
     const activePost = fetchedPost?.data || initialPost
@@ -63,7 +65,7 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
                 content_type: activePost.contentType || "",
                 scheduled_date: activePost.scheduledDate ? activePost.scheduledDate.split('T')[0] : "",
                 project_id: activePost.projectId ? activePost.projectId.toString() : "",
-                responsible_id: activePost.responsibleId ? activePost.responsibleId.toString() : "",
+                responsible_id: activePost.responsibleId || "",
                 status_id: activePost.statusId ? activePost.statusId.toString() : "",
                 comments: activePost.comments || "",
             })
@@ -110,13 +112,23 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
             const pendingIds = pendingCloudFiles.map((file: any) => file.id || file)
             const allFileIds = [...uploadedFileIds, ...pendingIds]
 
+            const payload = {
+                ...data,
+                pending_file_ids: allFileIds
+            };
+
+            console.log("[MUTATION] Sending to API:", {
+                url,
+                method,
+                payload,
+                responsible_id: payload.responsible_id,
+                responsible_id_type: typeof payload.responsible_id
+            });
+
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    ...data,
-                    pending_file_ids: allFileIds
-                }),
+                body: JSON.stringify(payload),
             })
 
             if (!res.ok) {
@@ -240,9 +252,11 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
                             <Label htmlFor="responsible">Responsable</Label>
                             <RichSelect
                                 options={responsibleOptions}
-                                value={formData.responsible_id}
-                                onValueChange={(val) => setFormData({ ...formData, responsible_id: val })}
-                                placeholder="Seleccionar"
+                                value={formData.responsible_id && formData.responsible_id !== "" ? formData.responsible_id : undefined}
+                                onValueChange={(val) => setFormData({ ...formData, responsible_id: val || "" })}
+                                placeholder="Seleccionar responsable"
+                                showAvatar={true}
+                                imageKey="profile_photo_url"
                             />
                         </div>
                     </div>
@@ -264,8 +278,9 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
                         <Label className="block mb-3">Archivos Adjuntos</Label>
                         {isEdit && activePost ? (
                             <ModelAttachments
-                                modelId={activePost.id}
-                                modelType="App\\Models\\SocialMediaPost"
+                                key={`${activePost.id}-${(activePost.files || []).length}`}
+                                modelId={Number(activePost.id)}
+                                modelType={"App\\Models\\SocialMediaPost"}
                                 initialFiles={activePost.files || []}
                                 onUpdate={() => {
                                     queryClient.invalidateQueries({ queryKey: ["social-media-post", activePost.id] })

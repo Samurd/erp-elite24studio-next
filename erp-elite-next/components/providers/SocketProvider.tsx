@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { toast } from 'sonner';
 
@@ -12,6 +12,7 @@ export const useSocket = () => {
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     const [socket, setSocket] = useState<Socket | null>(null);
+    const isErrorShownRef = useRef(false);
 
     useEffect(() => {
         // Connect to NestJS backend
@@ -24,17 +25,24 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
         newSocket.on('connect', () => {
             // console.log('✅ Socket.IO connected:', newSocket.id);
+            isErrorShownRef.current = false;
             toast.success('Conexión en tiempo real establecida');
         });
 
         newSocket.on('disconnect', () => {
             // console.log('❌ Socket.IO disconnected');
-            toast.error('Desconectado del servidor en tiempo real. Intentando reconectar...');
+            if (!isErrorShownRef.current) {
+                toast.error('Desconectado del servidor en tiempo real. Intentando reconectar...');
+                isErrorShownRef.current = true;
+            }
         });
 
         newSocket.on('connect_error', (error) => {
             // console.error('🔴 Socket.IO connection error:', error);
-            toast.error('Error de conexión en tiempo real: ' + error);
+            if (!isErrorShownRef.current) {
+                toast.error('Error de conexión en tiempo real: ' + error);
+                isErrorShownRef.current = true;
+            }
         });
 
         setSocket(newSocket);

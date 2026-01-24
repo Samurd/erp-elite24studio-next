@@ -104,14 +104,18 @@ export async function attachFileToModel(fileId: number, modelType: string, model
 
 export async function detachFileFromModel(fileId: number, modelType: string, modelId: number) {
     try {
-        await db.delete(filesLinks)
+        console.log(`[detachFileFromModel] Attempting to detach fileId=${fileId}, modelType=${modelType}, modelId=${modelId}`);
+        const result = await db.delete(filesLinks)
             .where(
                 and(
                     eq(filesLinks.fileId, fileId),
                     eq(filesLinks.fileableType, modelType),
                     eq(filesLinks.fileableId, modelId)
                 )
-            );
+            ).returning(); // Returning deleted rows to verify
+
+        console.log(`[detachFileFromModel] Deleted rows:`, result);
+
         return { success: true };
     } catch (error) {
         console.error("Error detaching file:", error);

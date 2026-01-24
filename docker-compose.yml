@@ -12,19 +12,19 @@ services:
     image: postgres:15
     container_name: erp-elite-postgres
     environment:
-      POSTGRES_DB: ${DB_DATABASE:-appweb}
+      POSTGRES_DB: ${DB_DATABASE:-elitedb}
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-    command:
-      - -c
-      - listen_addresses=*
-      - -c
-      - wal_level=logical
+    # command:
+    #   - -c
+    #   - listen_addresses=*
+    #   - -c
+    #   - wal_level=logical
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "5444:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init-electric.sql:/docker-entrypoint-initdb.d/init-electric.sql
+      # - ./docker/postgres/init-electric.sql:/docker-entrypoint-initdb.d/init-electric.sql
     networks:
       - erp-elite-network
     healthcheck:
@@ -77,21 +77,21 @@ services:
       - erp-elite-network
 
   # Servicio ElectricSQL para sincronización local-first
-  electric:
-    image: electricsql/electric:latest
-    container_name: erp-elite-electric
-    environment:
-      DATABASE_URL: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-password}@postgres:5432/${DB_DATABASE:-appweb}?sslmode=disable"
-      # Not suitable for production. Only use insecure mode in development or if you've otherwise secured the Electric API.
-      # See https://electric-sql.com/docs/guides/security
-      ELECTRIC_INSECURE: true
-    ports:
-      - "3000:3000" # Electric sync service
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - erp-elite-network
+  # electric:
+  #   image: electricsql/electric:latest
+  #   container_name: erp-elite-electric
+  #   environment:
+  #     DATABASE_URL: "postgresql://${DB_USERNAME:-postgres}:${DB_PASSWORD:-password}@postgres:5432/${DB_DATABASE:-elitedb}?sslmode=disable"
+  #     # Not suitable for production. Only use insecure mode in development or if you've otherwise secured the Electric API.
+  #     # See https://electric-sql.com/docs/guides/security
+  #     ELECTRIC_INSECURE: true
+  #   ports:
+  #     - "3000:3000" # Electric sync service
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - erp-elite-network
 
   # # Servicio Nextcloud
   # nextcloud:

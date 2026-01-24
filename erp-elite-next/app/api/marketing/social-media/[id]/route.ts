@@ -44,8 +44,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             mediums: body.mediums,
             contentType: body.content_type,
             scheduledDate: body.scheduled_date || null,
-            projectId: body.project_id ? parseInt(body.project_id) : null,
-            responsibleId: body.responsible_id ? parseInt(body.responsible_id) : null,
+            projectId: body.project_id && !isNaN(parseInt(body.project_id)) ? parseInt(body.project_id) : null,
+            responsibleId: body.responsible_id || null,
             statusId: parseInt(body.status_id),
             comments: body.comments,
             updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
