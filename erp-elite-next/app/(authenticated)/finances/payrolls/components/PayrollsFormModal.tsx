@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -23,6 +25,18 @@ interface PayrollsFormModalProps {
     onSuccess: () => void
 }
 
+const payrollSchema = z.object({
+    employee_id: z.string().min(1, "Requerido"),
+    status_id: z.string().optional(),
+    subtotal: z.union([z.string(), z.number()]).transform((val) => Number(val) || 0),
+    bonos: z.union([z.string(), z.number()]).transform((val) => Number(val) || 0),
+    deductions: z.union([z.string(), z.number()]).transform((val) => Number(val) || 0),
+    total: z.union([z.string(), z.number()]).transform((val) => Number(val) || 0),
+    observations: z.string().optional(),
+})
+
+type PayrollFormValues = z.infer<typeof payrollSchema>
+
 export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuccess }: PayrollsFormModalProps) {
     const [employees, setEmployees] = useState<any[]>([])
     const [statusOptions, setStatusOptions] = useState<any[]>([])
@@ -35,7 +49,8 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
 
     const [detailData, setDetailData] = useState<any>(null) // For view/edit full fetch
 
-    const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
+    const { register, control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<PayrollFormValues>({
+        resolver: zodResolver(payrollSchema),
         defaultValues: {
             employee_id: "",
             subtotal: 0,
@@ -120,7 +135,7 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
         }
     }
 
-    const onSubmit = async (data: any) => {
+    const onSubmit = async (data: PayrollFormValues) => {
         setSaving(true)
         try {
             // 1. Upload new files
@@ -165,14 +180,17 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                 body: JSON.stringify(payload)
             })
 
-            if (!res.ok) throw new Error("Error al guardar")
+            if (!res.ok) {
+                const errorText = await res.text()
+                throw new Error(errorText || "Error al guardar")
+            }
 
             toast.success(mode === 'create' ? "Nómina creada exitosamente" : "Nómina actualizada exitosamente")
             onSuccess()
             onOpenChange(false)
-        } catch (error) {
+        } catch (error: any) {
             console.error(error)
-            toast.error("Error al guardar la nómina")
+            toast.error(error.message || "Error al guardar la nómina")
         } finally {
             setSaving(false)
         }
@@ -198,37 +216,49 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                         {/* Employee */}
                         <div className="space-y-2">
                             <Label>Empleado</Label>
-                            <RichSelect
-                                placeholder="Seleccionar empleado"
-                                options={employees.map(emp => ({
-                                    id: String(emp.id),
-                                    name: emp.fullName,
-                                    profile_photo_url: emp.profilePhotoUrl // Assuming this property exists in the API response or modify accordingly
-                                }))}
-                                value={watch("employee_id")}
-                                onValueChange={(val) => setValue("employee_id", val)}
-                                disabled={isView}
+                            <Controller
+                                name="employee_id"
+                                control={control}
+                                render={({ field }) => (
+                                    <RichSelect
+                                        placeholder="Seleccionar empleado"
+                                        options={employees.map(emp => ({
+                                            id: String(emp.id),
+                                            name: emp.fullName,
+                                            profile_photo_url: emp.profilePhotoUrl
+                                        }))}
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        disabled={isView}
+                                    />
+                                )}
                             />
-                            {errors.employee_id && <p className="text-sm text-red-500">Requerido</p>}
+                            {errors.employee_id && <p className="text-sm text-red-500">{errors.employee_id.message as string}</p>}
                         </div>
 
                         {/* Status */}
                         <div className="space-y-2">
                             <Label>Estado</Label>
-                            <Select
-                                disabled={isView}
-                                onValueChange={(val) => setValue("status_id", val)}
-                                value={watch("status_id")}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar estado" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {statusOptions.map(st => (
-                                        <SelectItem key={st.id} value={String(st.id)}>{st.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Controller
+                                name="status_id"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select
+                                        disabled={isView}
+                                        onValueChange={field.onChange}
+                                        value={field.value}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar estado" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {statusOptions.map(st => (
+                                                <SelectItem key={st.id} value={String(st.id)}>{st.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            />
                         </div>
                     </div>
 

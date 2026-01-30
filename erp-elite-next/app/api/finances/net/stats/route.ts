@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { incomes, tags } from "@/drizzle/schema";
+import { incomes, tags, expenses, payrolls, taxRecords } from "@/drizzle/schema";
 import { and, eq, sql, desc, gte, lte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { format, subYears, subMonths, startOfMonth, endOfMonth, getYear, getMonth } from "date-fns";
@@ -35,7 +35,33 @@ export async function GET(request: Request) {
             }
         });
 
-        const totalIncome = globalIncomesData.reduce((sum, item) => sum + Number(item.amount), 0);
+        const totalGrossIncome = globalIncomesData.reduce((sum, item) => sum + Number(item.amount), 0);
+
+        // Fetch Global Expenses
+        const globalExpensesConditions = [
+            sql`EXTRACT(YEAR FROM ${expenses.date}) = ${year}`
+        ];
+        if (month) globalExpensesConditions.push(sql`EXTRACT(MONTH FROM ${expenses.date}) = ${month}`);
+        const globalExpensesData = await db.select({ amount: expenses.amount }).from(expenses).where(and(...globalExpensesConditions));
+        const totalExpenses = globalExpensesData.reduce((sum, item) => sum + Number(item.amount), 0);
+
+        // Fetch Global Payrolls
+        const globalPayrollsConditions = [
+            sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${year}`
+        ];
+        if (month) globalPayrollsConditions.push(sql`EXTRACT(MONTH FROM ${payrolls.createdAt}) = ${month}`);
+        const globalPayrollsData = await db.select({ total: payrolls.total }).from(payrolls).where(and(...globalPayrollsConditions));
+        const totalPayrolls = globalPayrollsData.reduce((sum, item) => sum + Number(item.total), 0);
+
+        // Fetch Global Taxes
+        const globalTaxesConditions = [
+            sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${year}`
+        ];
+        if (month) globalTaxesConditions.push(sql`EXTRACT(MONTH FROM ${taxRecords.date}) = ${month}`);
+        const globalTaxesData = await db.select({ amount: taxRecords.amount }).from(taxRecords).where(and(...globalTaxesConditions));
+        const totalTaxes = globalTaxesData.reduce((sum, item) => sum + Number(item.amount), 0);
+
+        const totalIncome = totalGrossIncome - totalExpenses - totalPayrolls - totalTaxes;
 
         // Income by Type (Areas)
         const incomeByTypeRaw: Record<string, number> = {};
@@ -54,8 +80,6 @@ export async function GET(request: Request) {
         let previousPeriodIncome = 0;
         if (month) {
             // Compare with previous month
-            // Note: month is 1-indexed here. 
-            // If month is 1 (Jan), prev is Dec of year-1.
             let prevMonth = month - 1;
             let prevYear = year;
             if (prevMonth === 0) {
@@ -63,48 +87,73 @@ export async function GET(request: Request) {
                 prevYear = year - 1;
             }
 
-            const prevPeriodData = await db.select({
-                amount: incomes.amount
-            }).from(incomes)
-                .where(and(
-                    sql`EXTRACT(YEAR FROM ${incomes.date}) = ${prevYear}`,
-                    sql`EXTRACT(MONTH FROM ${incomes.date}) = ${prevMonth}`
-                ));
+            const prevIncomes = await db.select({ amount: incomes.amount }).from(incomes).where(and(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${prevYear}`, sql`EXTRACT(MONTH FROM ${incomes.date}) = ${prevMonth}`));
+            const prevExp = await db.select({ amount: expenses.amount }).from(expenses).where(and(sql`EXTRACT(YEAR FROM ${expenses.date}) = ${prevYear}`, sql`EXTRACT(MONTH FROM ${expenses.date}) = ${prevMonth}`));
+            const prevPay = await db.select({ total: payrolls.total }).from(payrolls).where(and(sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${prevYear}`, sql`EXTRACT(MONTH FROM ${payrolls.createdAt}) = ${prevMonth}`));
+            const prevTax = await db.select({ amount: taxRecords.amount }).from(taxRecords).where(and(sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${prevYear}`, sql`EXTRACT(MONTH FROM ${taxRecords.date}) = ${prevMonth}`));
 
-            previousPeriodIncome = prevPeriodData.reduce((sum, item) => sum + Number(item.amount), 0);
+            const pi = prevIncomes.reduce((s, i) => s + Number(i.amount), 0);
+            const pe = prevExp.reduce((s, i) => s + Number(i.amount), 0);
+            const pp = prevPay.reduce((s, i) => s + Number(i.total), 0);
+            const pt = prevTax.reduce((s, i) => s + Number(i.amount), 0);
+            previousPeriodIncome = pi - pe - pp - pt;
 
         } else {
             // Compare with previous year
             const prevYear = year - 1;
-            const prevPeriodData = await db.select({
-                amount: incomes.amount
-            }).from(incomes)
-                .where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${prevYear}`);
 
-            previousPeriodIncome = prevPeriodData.reduce((sum, item) => sum + Number(item.amount), 0);
+            const prevIncomes = await db.select({ amount: incomes.amount }).from(incomes).where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${prevYear}`);
+            const prevExp = await db.select({ amount: expenses.amount }).from(expenses).where(sql`EXTRACT(YEAR FROM ${expenses.date}) = ${prevYear}`);
+            const prevPay = await db.select({ total: payrolls.total }).from(payrolls).where(sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${prevYear}`);
+            const prevTax = await db.select({ amount: taxRecords.amount }).from(taxRecords).where(sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${prevYear}`);
+
+            const pi = prevIncomes.reduce((s, i) => s + Number(i.amount), 0);
+            const pe = prevExp.reduce((s, i) => s + Number(i.amount), 0);
+            const pp = prevPay.reduce((s, i) => s + Number(i.total), 0);
+            const pt = prevTax.reduce((s, i) => s + Number(i.amount), 0);
+            previousPeriodIncome = pi - pe - pp - pt;
         }
 
         let growthPercentage = 0;
-        if (previousPeriodIncome > 0) {
-            growthPercentage = ((totalIncome - previousPeriodIncome) / previousPeriodIncome) * 100;
+        if (previousPeriodIncome !== 0) { // Check not 0 to avoid Infinity
+            growthPercentage = ((totalIncome - previousPeriodIncome) / Math.abs(previousPeriodIncome)) * 100;
         }
 
 
         // ------------------------------------------------------------------
         // 2. Net Income by Month (Bar Chart) - Uses monthlyChartYear
         // ------------------------------------------------------------------
-        const monthlyIncomesData = await db.select({
-            date: incomes.date,
-            amount: incomes.amount
-        }).from(incomes)
-            .where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${monthlyChartYear}`);
+        const monthlyIncomesData = await db.select({ date: incomes.date, amount: incomes.amount }).from(incomes).where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${monthlyChartYear}`);
+        const monthlyExpensesData = await db.select({ date: expenses.date, amount: expenses.amount }).from(expenses).where(sql`EXTRACT(YEAR FROM ${expenses.date}) = ${monthlyChartYear}`);
+        const monthlyPayrollsData = await db.select({ date: payrolls.createdAt, total: payrolls.total }).from(payrolls).where(sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${monthlyChartYear}`);
+        const monthlyTaxesData = await db.select({ date: taxRecords.date, amount: taxRecords.amount }).from(taxRecords).where(sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${monthlyChartYear}`);
 
         const monthlyChartData = Array(12).fill(0);
+
+        // Add Incomes
         monthlyIncomesData.forEach(item => {
-            const m = parseInt(item.date.split('-')[1]) - 1; // 0-indexed month
-            if (m >= 0 && m < 12) {
-                monthlyChartData[m] += Number(item.amount) / 100;
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) monthlyChartData[m] += Number(item.amount) / 100;
+        });
+
+        // Subtract Expenses
+        monthlyExpensesData.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) monthlyChartData[m] -= Number(item.amount) / 100;
+        });
+
+        // Subtract Payrolls (using createdAt as date proxy)
+        monthlyPayrollsData.forEach(item => {
+            if (item.date) {
+                const m = parseInt(item.date.split('-')[1]) - 1;
+                if (m >= 0 && m < 12) monthlyChartData[m] -= Number(item.total) / 100;
             }
+        });
+
+        // Subtract Taxes
+        monthlyTaxesData.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) monthlyChartData[m] -= Number(item.amount) / 100;
         });
 
 
@@ -152,28 +201,60 @@ export async function GET(request: Request) {
         // ------------------------------------------------------------------
         // 5. Comparison (Year vs Year) - Uses comparisonChartYear vs Previous
         // ------------------------------------------------------------------
-        const compCurrentData = await db.select({
-            date: incomes.date,
-            amount: incomes.amount
-        }).from(incomes)
-            .where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${comparisonChartYear}`);
-
-        const compLastData = await db.select({
-            date: incomes.date,
-            amount: incomes.amount
-        }).from(incomes)
-            .where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${comparisonChartYear - 1}`);
+        // Current Year Net
+        const compCurrentIncomes = await db.select({ date: incomes.date, amount: incomes.amount }).from(incomes).where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${comparisonChartYear}`);
+        const compCurrentExp = await db.select({ date: expenses.date, amount: expenses.amount }).from(expenses).where(sql`EXTRACT(YEAR FROM ${expenses.date}) = ${comparisonChartYear}`);
+        const compCurrentPay = await db.select({ date: payrolls.createdAt, total: payrolls.total }).from(payrolls).where(sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${comparisonChartYear}`);
+        const compCurrentTax = await db.select({ date: taxRecords.date, amount: taxRecords.amount }).from(taxRecords).where(sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${comparisonChartYear}`);
 
         const chartComparisonCurrent = Array(12).fill(0);
-        compCurrentData.forEach(item => {
+
+        compCurrentIncomes.forEach(item => {
             const m = parseInt(item.date.split('-')[1]) - 1;
             if (m >= 0 && m < 12) chartComparisonCurrent[m] += Number(item.amount) / 100;
         });
+        compCurrentExp.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) chartComparisonCurrent[m] -= Number(item.amount) / 100;
+        });
+        compCurrentPay.forEach(item => {
+            if (item.date) {
+                const m = parseInt(item.date.split('-')[1]) - 1;
+                if (m >= 0 && m < 12) chartComparisonCurrent[m] -= Number(item.total) / 100;
+            }
+        });
+        compCurrentTax.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) chartComparisonCurrent[m] -= Number(item.amount) / 100;
+        });
+
+
+        // Previous Year Net
+        const prevYearComp = comparisonChartYear - 1;
+        const compLastIncomes = await db.select({ date: incomes.date, amount: incomes.amount }).from(incomes).where(sql`EXTRACT(YEAR FROM ${incomes.date}) = ${prevYearComp}`);
+        const compLastExp = await db.select({ date: expenses.date, amount: expenses.amount }).from(expenses).where(sql`EXTRACT(YEAR FROM ${expenses.date}) = ${prevYearComp}`);
+        const compLastPay = await db.select({ date: payrolls.createdAt, total: payrolls.total }).from(payrolls).where(sql`EXTRACT(YEAR FROM ${payrolls.createdAt}) = ${prevYearComp}`);
+        const compLastTax = await db.select({ date: taxRecords.date, amount: taxRecords.amount }).from(taxRecords).where(sql`EXTRACT(YEAR FROM ${taxRecords.date}) = ${prevYearComp}`);
 
         const chartComparisonLast = Array(12).fill(0);
-        compLastData.forEach(item => {
+
+        compLastIncomes.forEach(item => {
             const m = parseInt(item.date.split('-')[1]) - 1;
             if (m >= 0 && m < 12) chartComparisonLast[m] += Number(item.amount) / 100;
+        });
+        compLastExp.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) chartComparisonLast[m] -= Number(item.amount) / 100;
+        });
+        compLastPay.forEach(item => {
+            if (item.date) {
+                const m = parseInt(item.date.split('-')[1]) - 1;
+                if (m >= 0 && m < 12) chartComparisonLast[m] -= Number(item.total) / 100;
+            }
+        });
+        compLastTax.forEach(item => {
+            const m = parseInt(item.date.split('-')[1]) - 1;
+            if (m >= 0 && m < 12) chartComparisonLast[m] -= Number(item.amount) / 100;
         });
 
 

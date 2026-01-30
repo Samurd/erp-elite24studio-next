@@ -49,44 +49,59 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         return new NextResponse("Invalid JSON", { status: 400 });
     }
 
-    const {
-        employee_id,
-        subtotal,
-        bonos,
-        deductions,
-        total,
-        status_id,
-        observations,
-        pending_file_ids,
-    } = payload;
+    try {
+        const {
+            employee_id,
+            subtotal,
+            bonos,
+            deductions,
+            total,
+            status_id,
+            observations,
+            pending_file_ids,
+        } = payload;
 
-    await db.update(payrolls)
-        .set({
-            employeeId: employee_id ? parseInt(employee_id) : null,
-            subtotal: parseInt(subtotal),
-            bonos: bonos ? parseInt(bonos) : 0,
-            deductions: deductions ? parseInt(deductions) : 0,
-            total: parseInt(total),
-            statusId: status_id ? parseInt(status_id) : null,
-            observations: observations || null,
-            updatedAt: new Date().toISOString(),
-        })
-        .where(eq(payrolls.id, payrollId));
-
-    // Handle new attachments if any (though usually edit mode uses Attachment component directly)
-    // But Form.vue might send pending_file_ids if standard logic is used.
-    // In `NormsFormModal` I used `ModelAttachmentsCreator` which emits `pendingFileIds`.
-    if (pending_file_ids && Array.isArray(pending_file_ids)) {
-        for (const fileId of pending_file_ids) {
-            await attachFileToModel(
-                typeof fileId === 'string' ? parseInt(fileId) : fileId,
-                "App\\Models\\Payroll",
-                payrollId
-            );
+        // Validation - ensure fields exist if we are updating them fully
+        if (subtotal === undefined || subtotal === null || total === undefined || total === null) {
+            return new NextResponse("Missing required fields: subtotal or total", { status: 400 });
         }
-    }
 
-    return NextResponse.json({ success: true });
+        const subtotalNum = parseInt(subtotal);
+        const totalNum = parseInt(total);
+
+        if (isNaN(subtotalNum) || isNaN(totalNum)) {
+            return new NextResponse("Invalid number format for subtotal or total", { status: 400 });
+        }
+
+        await db.update(payrolls)
+            .set({
+                employeeId: employee_id ? parseInt(employee_id) : null,
+                subtotal: subtotalNum,
+                bonos: bonos ? parseInt(bonos) : 0,
+                deductions: deductions ? parseInt(deductions) : 0,
+                total: totalNum,
+                statusId: status_id ? parseInt(status_id) : null,
+                observations: observations || null,
+                updatedAt: new Date().toISOString(),
+            })
+            .where(eq(payrolls.id, payrollId));
+
+        // Handle new attachments if any
+        if (pending_file_ids && Array.isArray(pending_file_ids)) {
+            for (const fileId of pending_file_ids) {
+                await attachFileToModel(
+                    typeof fileId === 'string' ? parseInt(fileId) : fileId,
+                    "App\\Models\\Payroll",
+                    payrollId
+                );
+            }
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error("Error updating payroll:", error);
+        return new NextResponse(error.message || "Internal Server Error", { status: 500 });
+    }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

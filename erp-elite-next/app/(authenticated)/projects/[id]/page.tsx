@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import ModelAttachments from "@/components/cloud/ModelAttachments";
 import PlannerBoard from "@/app/(authenticated)/planner/components/PlannerBoard";
 import { ProjectFormModal } from "../components/ProjectFormModal";
+import PlannerGantt from "@/app/(authenticated)/planner/components/PlannerGantt";
 
 export default function ProjectDetailPage({
     params,
@@ -47,6 +48,8 @@ export default function ProjectDetailPage({
     const [activeTab, setActiveTab] = useState("info");
     const [showEditModal, setShowEditModal] = useState(false);
     const [selectedPlanId, setSelectedPlanId] = useState<string>("");
+    const [viewMode, setViewMode] = useState<"board" | "gantt">("board");
+
 
     // Fetch project
     const { data: project, isLoading } = useQuery({
@@ -395,6 +398,21 @@ export default function ProjectDetailPage({
                             <div className="flex items-center justify-between">
                                 <h3 className="text-lg font-semibold">Plan de Trabajo</h3>
                                 <div className="flex items-center gap-2">
+                                    <div className="flex bg-slate-100 p-1 rounded-md">
+                                        <button
+                                            onClick={() => setViewMode("board")}
+                                            className={`px-3 py-1 text-sm font-medium rounded-sm transition-all ${viewMode === "board" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+                                        >
+                                            Tablero
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode("gantt")}
+                                            className={`px-3 py-1 text-sm font-medium rounded-sm transition-all ${viewMode === "gantt" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+                                        >
+                                            Gantt
+                                        </button>
+                                    </div>
+
                                     {project.plans.length > 1 && (
                                         <div className="w-[200px]">
                                             <RichSelect
@@ -423,11 +441,18 @@ export default function ProjectDetailPage({
                             </div>
 
                             {selectedPlanId && (
-                                <div className="h-[600px] border rounded-lg overflow-hidden">
-                                    <PlannerBoard
-                                        planId={parseInt(selectedPlanId)}
-                                        planName={project.plans.find((p: any) => p.id.toString() === selectedPlanId)?.name}
-                                    />
+                                <div className="h-[600px] border rounded-lg overflow-hidden" style={{ clipPath: 'inset(0 round 8px)' }}>
+                                    {viewMode === "board" ? (
+                                        <PlannerBoard
+                                            planId={parseInt(selectedPlanId)}
+                                            planName={project.plans.find((p: any) => p.id.toString() === selectedPlanId)?.name}
+                                        />
+                                    ) : (
+                                        <PlannerGantt
+                                            planId={parseInt(selectedPlanId)}
+                                            planName={project.plans.find((p: any) => p.id.toString() === selectedPlanId)?.name}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
