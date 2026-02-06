@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // // Fix hot reload on Windows
+  // webpack: (config, { dev }) => {
+  //   if (dev) {
+  //     config.watchOptions = {
+  //       poll: 1000,
+  //       aggregateTimeout: 300,
+  //     };
+  //   }
+  //   return config;
+  // },
   typescript: {
     // !! WARN !!
     // Dangerously allow production builds to successfully complete even if

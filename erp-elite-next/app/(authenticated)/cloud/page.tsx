@@ -122,7 +122,15 @@ export default function CloudPage() {
         if (id) {
             router.push(`/cloud?folder=${id}`);
         } else {
-            router.push('/cloud');
+            // If we're in a shared folder and user clicks to go to "root", 
+            // go to the shared folder root (first breadcrumb), not the cloud root
+            const isInSharedFolder = data?.currentFolder?.ownerName === 'Shared';
+            if (isInSharedFolder && data?.breadcrumbs && data.breadcrumbs.length > 0) {
+                // Go to the first breadcrumb which is the shared folder root
+                router.push(`/cloud?folder=${data.breadcrumbs[0].id}`);
+            } else {
+                router.push('/cloud');
+            }
         }
     };
 
@@ -196,7 +204,7 @@ export default function CloudPage() {
 
         // Preserve extension for files
         if (renamingItem.type === 'file') {
-            const originalFile = data?.files.find(f => f.id === renamingItem.id);
+            const originalFile = (data?.files || []).find(f => f.id === renamingItem.id);
             if (originalFile) {
                 const originalExtension = originalFile.name.split('.').pop();
                 if (originalExtension && !newName.endsWith(`.${originalExtension}`)) {
@@ -227,6 +235,7 @@ export default function CloudPage() {
                     onOpenFolder={openFolder}
                     onCreateFolder={(name) => createFolderMutation.mutate(name)}
                     onFileUpload={handleFileUpload}
+                    isShareView={data?.currentFolder?.ownerName === 'Shared'}
                 />
 
                 {/* Content */}
@@ -234,40 +243,89 @@ export default function CloudPage() {
                     <div className="flex justify-center items-center h-64">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                     </div>
-                ) : data?.folders.length === 0 && data?.files.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-[400px] text-gray-500">
-                        <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                            <Folder className="w-12 h-12 text-gray-400" />
-                        </div>
-                        <h3 className="text-lg font-medium text-gray-700">Carpeta vacía</h3>
-                        <p className="text-sm mt-1">Sube archivos o crea una carpeta</p>
-                    </div>
                 ) : (
                     <>
-                        {viewMode === 'grid' && (
-                            <CloudGrid
-                                data={data}
-                                renamingItem={renamingItem}
-                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
-                                onRenameSubmit={handleRenameSubmit}
-                                onRenameCancel={() => setRenamingItem(null)}
-                                onOpenFolder={openFolder}
-                                onDownloadFile={downloadFile}
-                                onContextMenu={handleContextMenu}
-                            />
-                        )}
+                        {/* Empty State checks both personal and shared */}
+                        {data?.folders.length === 0 && data?.files.length === 0 && (!data?.sharedFolders || data.sharedFolders.length === 0) && (!data?.sharedFiles || data.sharedFiles.length === 0) ? (
+                            <div className="flex flex-col items-center justify-center h-[400px] text-gray-500">
+                                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                    <Folder className="w-12 h-12 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-700">Carpeta vacía</h3>
+                                <p className="text-sm mt-1">Sube archivos o crea una carpeta</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-8">
+                                {/* Shared Section (Only show if there are shared items) */}
+                                {((data?.sharedFolders && data?.sharedFolders.length > 0) || (data?.sharedFiles && data?.sharedFiles.length > 0)) && (
+                                    <div>
+                                        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">Compartido conmigo</h2>
+                                        {viewMode === 'grid' && (
+                                            <CloudGrid
+                                                folders={data?.sharedFolders || []}
+                                                files={data?.sharedFiles || []}
+                                                renamingItem={renamingItem}
+                                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
+                                                onRenameSubmit={handleRenameSubmit}
+                                                onRenameCancel={() => setRenamingItem(null)}
+                                                onOpenFolder={openFolder}
+                                                onDownloadFile={downloadFile}
+                                                onContextMenu={handleContextMenu}
+                                            />
+                                        )}
+                                        {viewMode === 'list' && (
+                                            <CloudList
+                                                folders={data?.sharedFolders || []}
+                                                files={data?.sharedFiles || []}
+                                                renamingItem={renamingItem}
+                                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
+                                                onRenameSubmit={handleRenameSubmit}
+                                                onRenameCancel={() => setRenamingItem(null)}
+                                                onOpenFolder={openFolder}
+                                                onDownloadFile={downloadFile}
+                                                onContextMenu={handleContextMenu}
+                                            />
+                                        )}
+                                    </div>
+                                )}
 
-                        {viewMode === 'list' && (
-                            <CloudList
-                                data={data}
-                                renamingItem={renamingItem}
-                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
-                                onRenameSubmit={handleRenameSubmit}
-                                onRenameCancel={() => setRenamingItem(null)}
-                                onOpenFolder={openFolder}
-                                onDownloadFile={downloadFile}
-                                onContextMenu={handleContextMenu}
-                            />
+                                {/* Personal Section */}
+                                {((data?.folders?.length ?? 0) > 0 || (data?.files?.length ?? 0) > 0) && (
+                                    <div>
+                                        {/* Only show "My Files" header if shared section is also visible, to distinguish */}
+                                        {((data?.sharedFolders && data?.sharedFolders.length > 0) || (data?.sharedFiles && data?.sharedFiles.length > 0)) && (
+                                            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">Mis Archivos</h2>
+                                        )}
+                                        {viewMode === 'grid' && (
+                                            <CloudGrid
+                                                folders={data?.folders || []}
+                                                files={data?.files || []}
+                                                renamingItem={renamingItem}
+                                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
+                                                onRenameSubmit={handleRenameSubmit}
+                                                onRenameCancel={() => setRenamingItem(null)}
+                                                onOpenFolder={openFolder}
+                                                onDownloadFile={downloadFile}
+                                                onContextMenu={handleContextMenu}
+                                            />
+                                        )}
+
+                                        {viewMode === 'list' && (
+                                            <CloudList
+                                                folders={data?.folders || []}
+                                                files={data?.files || []}
+                                                renamingItem={renamingItem}
+                                                onRenameChange={(name) => renamingItem && setRenamingItem({ ...renamingItem, name })}
+                                                onRenameSubmit={handleRenameSubmit}
+                                                onRenameCancel={() => setRenamingItem(null)}
+                                                onOpenFolder={openFolder}
+                                                onDownloadFile={downloadFile}
+                                                onContextMenu={handleContextMenu}
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </>
                 )}
@@ -287,7 +345,7 @@ export default function CloudPage() {
                 )}
 
                 <ShareModal
-                    show={!!sharingItem}
+                    isOpen={!!sharingItem}
                     item={sharingItem}
                     onClose={() => setSharingItem(null)}
                 />

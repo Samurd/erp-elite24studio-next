@@ -31,43 +31,52 @@ export default function CloudContextMenu({
     onShare,
     onDownload
 }: ContextMenuProps) {
+    // Permission logic: only restrict when explicitly 'view'
+    // Any other value (undefined, 'edit', etc.) allows editing
+    const canEdit = item.permission !== 'view';
+
     return (
         <div
             style={{ top: y, left: x }}
             className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] min-w-[160px] py-1"
             onClick={(e) => e.stopPropagation()}
         >
-            <button
-                onClick={() => {
-                    onShare({ id: item.id, type, name: item.name });
-                    onClose();
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-                <Share2 className="w-4 h-4 text-blue-600" /> Compartir
-            </button>
-            <div className="border-t border-gray-200 my-1" />
-            <button
-                onClick={() => {
-                    onRename({ id: item.id, type, name: item.name });
-                    onClose();
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-            >
-                <Edit2 className="w-4 h-4" /> Renombrar
-            </button>
-            <button
-                onClick={() => {
-                    onDelete(item, type);
-                    onClose();
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center gap-2"
-            >
-                <Trash2 className="w-4 h-4" /> Eliminar
-            </button>
+            {canEdit && (
+                <>
+                    <button
+                        onClick={() => {
+                            onShare({ id: item.id, type, name: item.name });
+                            onClose();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                        <Share2 className="w-4 h-4 text-blue-600" /> Compartir
+                    </button>
+                    <div className="border-t border-gray-200 my-1" />
+                    <button
+                        onClick={() => {
+                            onRename({ id: item.id, type, name: item.name });
+                            onClose();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                        <Edit2 className="w-4 h-4" /> Renombrar
+                    </button>
+                    <button
+                        onClick={() => {
+                            onDelete(item, type);
+                            onClose();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                        <Trash2 className="w-4 h-4" /> Eliminar
+                    </button>
+                </>
+            )}
+
             {type === 'file' && onDownload && (
                 <>
-                    <div className="border-t border-gray-200 my-1" />
+                    {canEdit && <div className="border-t border-gray-200 my-1" />}
                     <button
                         onClick={() => {
                             onDownload(item);

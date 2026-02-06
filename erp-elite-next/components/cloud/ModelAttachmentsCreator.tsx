@@ -1,8 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react';
-import { Link as LinkIcon, CloudUpload, X } from 'lucide-react';
+import { Link as LinkIcon, CloudUpload, X, File, Paperclip } from 'lucide-react';
 import FileSelectorModal from './FileSelectorModal';
+import { Button } from '@/components/ui/button';
 
 export interface PendingFile {
     id: number;
@@ -66,120 +67,142 @@ export default function ModelAttachmentsCreator({
     };
 
     return (
-        <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-800">Adjuntar Archivos</h3>
-                <button
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-gray-500" />
+                    Adjuntar Archivos
+                    <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {files.length + pendingCloudFiles.length}
+                    </span>
+                </h3>
+                <Button
+                    variant="outline"
+                    size="sm"
                     type="button"
-                    className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25 transition ease-in-out duration-150"
+                    className="h-8 text-xs bg-white"
                     onClick={() => setIsSelectorOpen(true)}
                 >
-                    <LinkIcon className="w-4 h-4 mr-2" />
+                    <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
                     Seleccionar del Cloud
-                </button>
+                </Button>
             </div>
 
-            <FileSelectorModal
-                isOpen={isSelectorOpen}
-                onClose={() => setIsSelectorOpen(false)}
-                onFileSelected={(file) => {
-                    // Check if already in pending
-                    if (!pendingCloudFiles.find(f => f.id === file.id)) {
-                        onPendingCloudFilesChange([...pendingCloudFiles, file]);
-                    }
-                }}
-            />
-
-            {/* Drop Zone */}
-            <div
-                className={`relative mb-6 border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${isDropping ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
-                    }`}
-                onDragOver={(e) => { e.preventDefault(); setIsDropping(true); }}
-                onDragLeave={(e) => { e.preventDefault(); setIsDropping(false); }}
-                onDrop={handleDrop}
-                onClick={() => inputRef.current?.click()}
-            >
-                <input
-                    type="file"
-                    ref={inputRef}
-                    multiple
-                    className="hidden"
-                    onChange={handleFileChange}
+            <div className="p-4">
+                <FileSelectorModal
+                    isOpen={isSelectorOpen}
+                    onClose={() => setIsSelectorOpen(false)}
+                    onFileSelected={(file) => {
+                        // Check if already in pending
+                        if (!pendingCloudFiles.find(f => f.id === file.id)) {
+                            onPendingCloudFilesChange([...pendingCloudFiles, file]);
+                        }
+                        setIsSelectorOpen(false);
+                    }}
                 />
 
-                <div>
-                    <p className="text-gray-500 text-sm flex flex-col items-center">
-                        <CloudUpload className="w-8 h-8 mb-2 text-blue-400" />
-                        Haz clic o arrastra para agregar
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">Se vincularán al crear el registro</p>
-                </div>
-            </div>
+                {/* Drop Zone */}
+                <div
+                    className={`relative mb-4 border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer group ${isDropping
+                            ? "border-blue-500 bg-blue-50/50"
+                            : "border-gray-200 hover:border-blue-400 hover:bg-gray-50"
+                        }`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDropping(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setIsDropping(false); }}
+                    onDrop={handleDrop}
+                    onClick={() => inputRef.current?.click()}
+                >
+                    <input
+                        type="file"
+                        ref={inputRef}
+                        multiple
+                        className="hidden"
+                        onChange={handleFileChange}
+                    />
 
-            {/* Lists */}
-            <div className="space-y-3">
-                {/* New Uploads */}
-                {files.length > 0 && (
-                    <div>
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Nuevos Archivos:</p>
-                        <div className="space-y-2">
-                            {files.map((file, index) => (
-                                <div key={`new-${index}`} className="flex items-center justify-between bg-blue-50 p-2 rounded border border-blue-100">
-                                    <div className="flex items-center overflow-hidden">
-                                        <div className="text-blue-400 mr-2">
-                                            {/* Icon placeholder if needed */}
-                                        </div >
-                                        <span className="text-sm text-blue-900 truncate" title={file.name}>
-                                            {file.name}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-blue-600">{formatSize(file.size)}</span>
+                    <div className="py-2">
+                        <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                            <CloudUpload className="w-5 h-5" />
+                        </div>
+                        <p className="text-gray-900 text-sm font-medium">
+                            Haz clic o arrastra archivos aquí
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">
+                            Se vincularán al crear el registro
+                        </p>
+                    </div>
+                </div>
+
+                {/* Lists */}
+                <div className="space-y-3">
+                    {/* Cloud Links */}
+                    {pendingCloudFiles.length > 0 && (
+                        <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-1">Desde Cloud ({pendingCloudFiles.length})</p>
+                            <div className="space-y-2">
+                                {pendingCloudFiles.map((file, index) => (
+                                    <div key={`cloud-${file.id}`} className="flex items-center justify-between p-2.5 bg-blue-50/50 rounded-lg border border-blue-100">
+                                        <div className="flex items-center overflow-hidden gap-3">
+                                            <div className="w-8 h-8 flex items-center justify-center rounded bg-blue-100 text-blue-600 flex-shrink-0">
+                                                <LinkIcon className="w-4 h-4" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <span className="text-sm font-medium text-blue-900 truncate block" title={file.name}>
+                                                    {file.name}
+                                                </span>
+                                                <span className="text-xs text-blue-500">{formatSize(file.size)}</span>
+                                            </div>
+                                        </div>
                                         <button
                                             type="button"
-                                            onClick={() => removeFile(index)}
-                                            className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                                            onClick={() => removeCloudFile(index)}
+                                            className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Cloud Links */}
-                {pendingCloudFiles.length > 0 && (
-                    <div>
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2 mt-4">Vincular desde Cloud:</p>
-                        <div className="space-y-2">
-                            {pendingCloudFiles.map((file, index) => (
-                                <div key={file.id} className="flex items-center justify-between bg-purple-50 p-2 rounded border border-purple-100">
-                                    <div className="flex items-center overflow-hidden">
-                                        <LinkIcon className="w-4 h-4 text-purple-400 mr-2" />
-                                        <span className="text-sm text-purple-900 truncate" title={file.name}>
-                                            {file.name}
-                                        </span>
+                    {/* New Uploads */}
+                    {files.length > 0 && (
+                        <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-1 mt-3">Nuevos Archivos ({files.length})</p>
+                            <div className="space-y-2">
+                                {files.map((file, index) => (
+                                    <div key={`new-${index}`} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200">
+                                        <div className="flex items-center overflow-hidden gap-3">
+                                            <div className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 text-gray-500 flex-shrink-0">
+                                                <File className="w-4 h-4" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <span className="text-sm font-medium text-gray-700 truncate block" title={file.name}>
+                                                    {file.name}
+                                                </span>
+                                                <span className="text-xs text-gray-400">{formatSize(file.size)}</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeFile(index)}
+                                            className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => removeCloudFile(index)}
-                                        className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {files.length === 0 && pendingCloudFiles.length === 0 && (
-                    <div className="text-center text-gray-400 text-xs py-4 italic border-t border-gray-100">
-                        No hay archivos seleccionados.
-                    </div>
-                )}
+                    {files.length === 0 && pendingCloudFiles.length === 0 && (
+                        <div className="text-center text-gray-400 text-xs py-4 bg-gray-50/30 rounded-lg border border-dashed border-gray-100">
+                            No hay archivos seleccionados.
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

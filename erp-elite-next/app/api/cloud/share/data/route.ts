@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
                 await db.delete(shares).where(eq(shares.id, publicLinkData.id));
             } else {
                 publicLink = {
-                    url: `${process.env.NEXT_PUBLIC_APP_URL}/public/share/${publicLinkData.shareToken}`,
+                    url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_DOMAIN || 'http://localhost:3000'}/s/share/${publicLinkData.shareToken}`,
                     expires_at: publicLinkData.expiresAt,
                     token: publicLinkData.shareToken
                 };

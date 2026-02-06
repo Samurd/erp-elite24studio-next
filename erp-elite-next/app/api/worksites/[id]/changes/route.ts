@@ -1,7 +1,7 @@
 
 import { db } from "@/lib/db";
 import { changes, filesLinks } from "@/drizzle/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -72,7 +72,9 @@ export async function POST(
                     fileId: parseInt(fileId),
                     fileableId: changeId,
                     fileableType: 'App\\Models\\WorksiteChange',
-                }).onDuplicateKeyUpdate({ set: { id: sql`id` } });
+                }).onConflictDoNothing({
+                    target: [filesLinks.fileId, filesLinks.fileableId, filesLinks.fileableType]
+                });
             }
         }
 

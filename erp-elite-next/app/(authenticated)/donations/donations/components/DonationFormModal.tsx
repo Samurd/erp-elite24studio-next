@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -10,8 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { RichSelect } from "@/components/ui/rich-select"
 import MoneyInput from "@/components/ui/money-input"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 
 interface DonationFormModalProps {
     open: boolean
@@ -30,6 +30,7 @@ export default function DonationFormModal({
 }: DonationFormModalProps) {
     const isEdit = mode === "edit"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full donation details if editing
     const { data: fetchedDonation } = useQuery({
@@ -52,8 +53,6 @@ export default function DonationFormModal({
         payment_method: "",
         date: "",
         certified: false,
-        files: [] as File[],
-        pending_file_ids: [] as any[], // For cloud files
     })
 
     useEffect(() => {
@@ -65,8 +64,6 @@ export default function DonationFormModal({
                 payment_method: activeDonation.paymentMethod || "",
                 date: activeDonation.date ? activeDonation.date.split('T')[0] : "",
                 certified: activeDonation.certified === 1,
-                files: [], // Files not typically pre-loaded in form state for edit, only new ones
-                pending_file_ids: [],
             })
         } else {
             setFormData({
@@ -76,8 +73,6 @@ export default function DonationFormModal({
                 payment_method: "",
                 date: new Date().toISOString().split('T')[0],
                 certified: false,
-                files: [],
-                pending_file_ids: [],
             })
         }
     }, [activeDonation, open, isEdit])
@@ -87,39 +82,15 @@ export default function DonationFormModal({
             const url = isEdit ? `/api/donations/donations/${activeDonation.id}` : "/api/donations/donations"
             const method = isEdit ? "PUT" : "POST"
 
-            // 1. Upload local files first
-            const uploadedFileIds: number[] = []
-            if (data.files && data.files.length > 0) {
-                const { uploadFile } = await import("@/actions/files")
-
-                for (const file of data.files) {
-                    const formData = new FormData()
-                    formData.append("file", file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    } else {
-                        console.error("Failed to upload file:", file.name)
-                        toast.error(`Error al subir archivo: ${file.name}`)
-                    }
-                }
-            }
-
-            // 2. Combine with existing pending cloud files
-            // Handle both object (from Creator) and primitive ID types if mixed
-            const pendingIds = data.pending_file_ids.map((f: any) => f.id || f)
-
-            const finalPendingIds = [
-                ...pendingIds,
-                ...uploadedFileIds
-            ]
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...data,
-                    pending_file_ids: finalPendingIds
+                    pending_file_ids: uploadedFileIds
                 }),
             })
 
@@ -230,28 +201,19 @@ export default function DonationFormModal({
 
                     {/* Files */}
                     <div className="border-t pt-6 space-y-4">
-                        {!isEdit ? (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files })}
-                            />
-                        ) : (
-                            activeDonation?.id && (
-                                <ModelAttachments
-                                    initialFiles={activeDonation.files || []}
-                                    modelId={activeDonation.id}
-                                    modelType="App\Models\Donation"
-
-                                    onUpdate={() => queryClient.invalidateQueries({ queryKey: ["donation", activeDonation.id] })}
-                                />
-                            )
-                        )}
-                        {/* Note: ModelAttachments for Edit likely needs the component to support fetching. 
-                            If not, we might need to fetch files in parent and pass them. 
-                            The reference vue used ModelAttachments with model-id.
-                        */}
+                        <Label className="text-lg font-medium">Archivos y Comprobantes</Label>
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="donaciones"
+                            initialFiles={activeDonation?.files || []}
+                            modelId={activeDonation?.id}
+                            modelType="App\Models\Donation"
+                            onUpdate={() => {
+                                if (activeDonation?.id) {
+                                    queryClient.invalidateQueries({ queryKey: ["donation", activeDonation.id] })
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

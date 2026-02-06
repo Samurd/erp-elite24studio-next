@@ -75,7 +75,7 @@ export default function RrhhSubmenu() {
 
     return (
         <div className="w-[90%] bg-white border-b shadow-xs h-12 flex items-center relative rounded-full m-4">
-            <div id="scrollContainer" className="flex-1 overflow-x-auto whitespace-nowrap flex items-center scrollbar-hide scroll-smooth no-scrollbar">
+            <div id="scrollContainer" className="flex-1 overflow-x-auto whitespace-nowrap flex items-center scroll-smooth [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-gray-300 py-1">
                 <ul className="flex items-center space-x-6 text-sm font-medium px-4 mx-auto">
                     {links.map((link) => (
                         <li key={link.href}>

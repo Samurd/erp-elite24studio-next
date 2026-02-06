@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Image } from "lucide-react";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 
 interface AdPieceFormModalProps {
     open: boolean;
@@ -28,6 +27,7 @@ interface AdPieceFormModalProps {
 export default function AdPieceFormModal({ open, onClose, data, typeOptions, formatOptions, statusOptions, projectOptions, teamOptions, strategyOptions }: AdPieceFormModalProps) {
     const isEdit = !!data;
     const queryClient = useQueryClient();
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
     const [currentData, setCurrentData] = useState(data);
 
     const [formData, setFormData] = useState({
@@ -118,10 +118,17 @@ export default function AdPieceFormModal({ open, onClose, data, typeOptions, for
             const url = isEdit ? `/api/marketing/ad-pieces/${data.id}` : "/api/marketing/ad-pieces";
             const method = isEdit ? "PUT" : "POST";
 
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+
+            const payload = {
+                ...submitData,
+                pending_file_ids: allFileIds
+            };
+
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(submitData),
+                body: JSON.stringify(payload),
             });
 
             if (!res.ok) {
@@ -292,21 +299,14 @@ export default function AdPieceFormModal({ open, onClose, data, typeOptions, for
                     {/* Files */}
                     <div className="border-t pt-4">
                         <Label className="block mb-3">Archivos Adjuntos</Label>
-                        {currentData && currentData.id ? (
-                            <ModelAttachments
-                                modelId={currentData.id}
-                                modelType="App\Models\Adpiece"
-                                initialFiles={currentData.files || []}
-                                onUpdate={refreshData}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids as any}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files as any })}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={currentData?.id}
+                            modelType="App\Models\Adpiece"
+                            initialFiles={currentData?.files || []}
+                            onUpdate={refreshData}
+                        />
                     </div>
 
                     <DialogFooter>

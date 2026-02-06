@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,8 +31,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { RichSelect } from "@/components/ui/rich-select";
 
 const projectSchema = z.object({
@@ -66,6 +65,7 @@ interface ProjectFormModalProps {
 export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormModalProps) {
     const queryClient = useQueryClient();
     const isEditing = !!projectId;
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     const [managedStages, setManagedStages] = useState<Stage[]>([]);
     const [showStageForm, setShowStageForm] = useState(false);
@@ -75,9 +75,6 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
         name: string;
         description: string;
     }>({ type: "new", id: null, name: "", description: "" });
-
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
 
     // Fetch options
     const { data: options } = useQuery({
@@ -119,8 +116,6 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
     // Populate form when project data loads
     useEffect(() => {
         if (project && isEditing) {
-            // console.log("Loading project data into form:", project);
-
             const formData = {
                 name: project.name || "",
                 description: project.description || "",
@@ -133,7 +128,6 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                 teamId: project.teamId?.toString() || "none",
             };
 
-            // console.log("Resetting form with:", formData);
             form.reset(formData);
 
             // Load existing stages
@@ -148,7 +142,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                 );
             }
         }
-    }, [project, isEditing]); // Removed 'form' from dependencies
+    }, [project, isEditing]);
 
     // Create mutation
     const createMutation = useMutation({
@@ -193,7 +187,7 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
         },
     });
 
-    const onSubmit = (data: ProjectFormData) => {
+    const onSubmit = async (data: ProjectFormData) => {
         // Convert 'none' values to null for optional fields
         const cleanedData = {
             ...data,
@@ -206,18 +200,27 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
             teamId: data.teamId === "none" ? null : data.teamId,
         };
 
+        // Upload files
+        const fileIds = await attachmentsRef.current?.upload() || [];
+
+        // Determine if we should send pendingCloudFileIds (existing backend expectation) or pending_file_ids
+        // Based on the old code: pendingCloudFileIds: pendingCloudFiles.map(f => f.id)
+        // We will stick to that key for now.
+        const payload = {
+            ...cleanedData,
+            pendingCloudFileIds: fileIds,
+        };
+
         if (isEditing) {
             updateMutation.mutate({
-                ...cleanedData,
+                ...payload,
                 managedStages,
-                pendingCloudFileIds: pendingCloudFiles.map(f => f.id),
             });
         } else {
             const tempStages = managedStages.filter((s) => s.isTemp);
             createMutation.mutate({
-                ...cleanedData,
+                ...payload,
                 tempStages,
-                pendingCloudFileIds: pendingCloudFiles.map(f => f.id),
             });
         }
     };
@@ -513,24 +516,16 @@ export function ProjectFormModal({ projectId, onClose, onSuccess }: ProjectFormM
                         {/* Files */}
                         <div className="pt-6 border-t">
                             <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-                            {isEditing && project ? (
-                                <ModelAttachments
-                                    initialFiles={project.files || []}
-                                    modelId={project.id}
-                                    modelType="Project"
-                                    onUpdate={() => {
-                                        // console.log("Files updated, invalidating query");
-                                        queryClient.invalidateQueries({ queryKey: ["project", projectId] });
-                                    }}
-                                />
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="proyectos"
+                                initialFiles={isEditing && project ? project.files || [] : []}
+                                modelId={projectId || undefined}
+                                modelType="Project"
+                                onUpdate={() => {
+                                    queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+                                }}
+                            />
                         </div>
 
                         {/* Stage Management */}

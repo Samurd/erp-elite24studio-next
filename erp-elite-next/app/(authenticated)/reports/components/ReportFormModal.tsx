@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { toast } from "sonner" // Assuming sonner is used for toasts, or standard toast
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+import { toast } from "sonner"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { DateService } from "@/lib/date-service"
 
 interface ReportFormModalProps {
@@ -23,6 +22,7 @@ interface ReportFormModalProps {
 export default function ReportFormModal({ open, onClose, report, statusOptions }: ReportFormModalProps) {
     const isEdit = !!report
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     const [formData, setFormData] = useState({
         title: "",
@@ -32,9 +32,6 @@ export default function ReportFormModal({ open, onClose, report, statusOptions }
         status_id: "",
         notes: "",
     })
-
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
 
     // Fetch full report details including files when in edit mode
     const { data: reportDetails } = useQuery({
@@ -72,36 +69,14 @@ export default function ReportFormModal({ open, onClose, report, statusOptions }
         }
     }, [effectiveReport, open])
 
-    useEffect(() => {
-        if (!open) {
-            setFiles([])
-            setPendingCloudFiles([])
-        }
-    }, [open])
 
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const url = isEdit ? `/api/reports/${report.id}` : "/api/reports"
             const method = isEdit ? "PUT" : "POST"
 
-
             // File upload logic
-            const uploadedFileIds = []
-            const { uploadFile } = await import("@/actions/files")
-
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
+            const allFileIds = await attachmentsRef.current?.upload() || []
 
             const payload = { ...data, pending_file_ids: allFileIds }
 
@@ -135,7 +110,7 @@ export default function ReportFormModal({ open, onClose, report, statusOptions }
 
     return (
         <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-            <DialogContent className="sm:max-w-[700px]">
+            <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{isEdit ? "Editar Reporte" : "Nuevo Reporte"}</DialogTitle>
                     <DialogDescription>
@@ -224,26 +199,19 @@ export default function ReportFormModal({ open, onClose, report, statusOptions }
                         {/* Attachments */}
                         <div className="md:col-span-2 space-y-2">
                             <Label className="mb-2 block">Archivos Adjuntos</Label>
-                            {isEdit ? (
-                                report && (
-                                    <ModelAttachments
-                                        initialFiles={effectiveReport.files || []}
-                                        modelId={effectiveReport.id}
-                                        modelType="App\Models\Report"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["report", effectiveReport.id] })
-                                            queryClient.invalidateQueries({ queryKey: ["reports"] })
-                                        }}
-                                    />
-                                )
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="reportes"
+                                initialFiles={effectiveReport?.files || []}
+                                modelId={effectiveReport?.id}
+                                modelType="App\Models\Report"
+                                onUpdate={() => {
+                                    if (effectiveReport?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["report", effectiveReport.id] })
+                                        queryClient.invalidateQueries({ queryKey: ["reports"] })
+                                    }
+                                }}
+                            />
                         </div>
                     </div>
 

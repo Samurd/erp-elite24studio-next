@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -10,8 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { RichSelect } from "@/components/ui/rich-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 
 interface VolunteerFormModalProps {
     open: boolean
@@ -32,6 +32,7 @@ export default function VolunteerFormModal({
 }: VolunteerFormModalProps) {
     const isEdit = mode === "edit"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full volunteer details if editing
     const { data: fetchedVolunteer } = useQuery({
@@ -59,8 +60,6 @@ export default function VolunteerFormModal({
         campaign_id: "",
         status_id: "",
         certified: false,
-        files: [] as File[],
-        pending_file_ids: [] as any[],
     })
 
     useEffect(() => {
@@ -77,8 +76,6 @@ export default function VolunteerFormModal({
                 campaign_id: activeVolunteer.campaignId ? activeVolunteer.campaignId.toString() : "",
                 status_id: activeVolunteer.statusId ? activeVolunteer.statusId.toString() : "",
                 certified: activeVolunteer.certified === 1,
-                files: [],
-                pending_file_ids: [],
             })
         } else {
             setFormData({
@@ -93,8 +90,6 @@ export default function VolunteerFormModal({
                 campaign_id: "",
                 status_id: "",
                 certified: false,
-                files: [],
-                pending_file_ids: [],
             })
         }
     }, [activeVolunteer, open, isEdit])
@@ -104,38 +99,15 @@ export default function VolunteerFormModal({
             const url = isEdit ? `/api/donations/volunteers/${activeVolunteer.id}` : "/api/donations/volunteers"
             const method = isEdit ? "PUT" : "POST"
 
-            // 1. Upload local files first
-            const uploadedFileIds: number[] = []
-            if (data.files && data.files.length > 0) {
-                const { uploadFile } = await import("@/actions/files") // Dynamic import
-
-                for (const file of data.files) {
-                    const formData = new FormData()
-                    formData.append("file", file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    } else {
-                        console.error("Failed to upload file:", file.name)
-                        toast.error(`Error al subir archivo: ${file.name}`)
-                    }
-                }
-            }
-
-            // 2. Combine with existing pending cloud files
-            const pendingIds = data.pending_file_ids.map((f: any) => f.id || f)
-
-            const finalPendingIds = [
-                ...pendingIds,
-                ...uploadedFileIds
-            ]
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...data,
-                    pending_file_ids: finalPendingIds
+                    pending_file_ids: uploadedFileIds
                 }),
             })
 
@@ -293,24 +265,19 @@ export default function VolunteerFormModal({
 
                     {/* Files */}
                     <div className="border-t pt-6 space-y-4">
-                        {!isEdit ? (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files })}
-                            />
-                        ) : (
-                            activeVolunteer?.id && (
-                                <ModelAttachments
-                                    initialFiles={activeVolunteer.files || []}
-                                    modelId={activeVolunteer.id}
-                                    modelType="App\Models\Volunteer"
-
-                                    onUpdate={() => queryClient.invalidateQueries({ queryKey: ["volunteer", activeVolunteer.id] })}
-                                />
-                            )
-                        )}
+                        <Label className="text-lg font-medium">Archivos y Documentos</Label>
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="donaciones"
+                            initialFiles={activeVolunteer?.files || []}
+                            modelId={activeVolunteer?.id}
+                            modelType="App\Models\Volunteer"
+                            onUpdate={() => {
+                                if (activeVolunteer?.id) {
+                                    queryClient.invalidateQueries({ queryKey: ["volunteer", activeVolunteer.id] })
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

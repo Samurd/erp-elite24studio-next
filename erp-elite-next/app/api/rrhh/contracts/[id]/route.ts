@@ -112,6 +112,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             updatedAt: DateService.toISO(),
         }).where(eq(contracts.id, contractId));
 
+
+
+        if (body.pending_file_ids && body.pending_file_ids.length > 0) {
+            for (const fileId of body.pending_file_ids) {
+                await db.insert(filesLinks).values({
+                    fileId: parseInt(fileId),
+                    fileableId: contractId,
+                    fileableType: 'App\\Models\\Contract',
+                }).onConflictDoNothing({
+                    target: [filesLinks.fileId, filesLinks.fileableId, filesLinks.fileableType]
+                });
+            }
+        }
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Error updating contract:", error);

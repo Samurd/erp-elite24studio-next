@@ -1,6 +1,6 @@
 
 import { db } from "@/lib/db";
-import { visits } from "@/drizzle/schema";
+import { visits, filesLinks } from "@/drizzle/schema";
 import { desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -59,6 +59,20 @@ export async function POST(
                 internalNotes: body.internal_notes || null,
             })
             .returning();
+
+        const visitId = newItem[0].id;
+
+        if (body.pending_file_ids && body.pending_file_ids.length > 0) {
+            for (const fileId of body.pending_file_ids) {
+                await db.insert(filesLinks).values({
+                    fileId: parseInt(fileId),
+                    fileableId: visitId,
+                    fileableType: 'App\\Models\\WorksiteVisit',
+                }).onConflictDoNothing({
+                    target: [filesLinks.fileId, filesLinks.fileableId, filesLinks.fileableType]
+                });
+            }
+        }
 
         return NextResponse.json(newItem[0]);
     } catch (error) {

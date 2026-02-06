@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -12,9 +12,8 @@ import { toast } from "sonner"
 import { RichSelect } from "@/components/ui/rich-select"
 import MoneyInput from "@/components/ui/money-input"
 import { DateService } from "@/lib/date-service"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
-import { uploadFile, attachFileToModel } from "@/actions/files"
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 
 interface ExpensesFormModalProps {
     open: boolean
@@ -37,6 +36,7 @@ export default function ExpensesFormModal({
 }: ExpensesFormModalProps) {
     const isEdit = mode === "edit"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     const [formData, setFormData] = useState({
         name: "",
@@ -47,10 +47,6 @@ export default function ExpensesFormModal({
         created_by_id: "",
         result_id: "",
     })
-
-    // File States for Creation Mode
-    const [filesToUpload, setFilesToUpload] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
 
     useEffect(() => {
         if (initialExpense && mode === "edit") {
@@ -63,9 +59,6 @@ export default function ExpensesFormModal({
                 created_by_id: initialExpense.createdById?.toString() || (initialExpense.createdBy?.id?.toString() || ""),
                 result_id: initialExpense.resultId?.toString() || (initialExpense.result?.id?.toString() || ""),
             })
-            // Reset files for edit mode (handled by ModelAttachments internally)
-            setFilesToUpload([])
-            setPendingCloudFiles([])
         } else {
             // Create Mode
             setFormData({
@@ -77,8 +70,6 @@ export default function ExpensesFormModal({
                 created_by_id: "",
                 result_id: "",
             })
-            setFilesToUpload([])
-            setPendingCloudFiles([])
         }
     }, [initialExpense, open, mode])
 
@@ -87,7 +78,10 @@ export default function ExpensesFormModal({
             const url = isEdit ? `/api/finances/expenses/${initialExpense.id}` : "/api/finances/expenses"
             const method = isEdit ? "PUT" : "POST"
 
-            const payload = { ...data, amount: data.amount }
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
+
+            const payload = { ...data, amount: data.amount, pending_file_ids: uploadedFileIds }
 
             const res = await fetch(url, {
                 method,
@@ -103,35 +97,7 @@ export default function ExpensesFormModal({
             const responseData = await res.json()
             return responseData
         },
-        onSuccess: async (data) => {
-            // If Create Mode and there are files, link them now
-            if (!isEdit && (filesToUpload.length > 0 || pendingCloudFiles.length > 0)) {
-                // Determine expense ID (returned from POST)
-                const expenseId = data.id
-                try {
-                    // 1. Link Cloud Files
-                    for (const file of pendingCloudFiles) {
-                        await attachFileToModel(file.id, 'App\\Models\\Expense', expenseId)
-                    }
-
-                    // 2. Upload and Link New Files
-                    for (const file of filesToUpload) {
-                        const formData = new FormData()
-                        formData.append('file', file)
-                        const uploadRes = await uploadFile(formData)
-                        if (uploadRes.success && uploadRes.file) {
-                            await attachFileToModel(uploadRes.file.id, 'App\\Models\\Expense', expenseId)
-                        } else {
-                            console.error("Failed to upload file during creation:", file.name)
-                            toast.error(`Error al subir archivo: ${file.name}`)
-                        }
-                    }
-                } catch (fileError) {
-                    console.error("Error attaching files:", fileError)
-                    toast.error("Gasto guardado, pero hubo error al adjuntar archivos.")
-                }
-            }
-
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ["expenses"] })
             queryClient.invalidateQueries({ queryKey: ["expenses-stats"] })
             toast.success(isEdit ? "Egreso actualizado" : "Egreso creado")
@@ -266,21 +232,14 @@ export default function ExpensesFormModal({
 
                     <div className="space-y-2 pt-2 border-t mt-4">
                         <Label>Archivos Adjuntos</Label>
-                        {isEdit ? (
-                            <ModelAttachments
-                                initialFiles={initialExpense?.files || []}
-                                modelId={initialExpense.id}
-                                modelType="App\Models\Expense"
-                                onUpdate={() => queryClient.invalidateQueries({ queryKey: ["expenses"] })}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={filesToUpload}
-                                onFilesChange={setFilesToUpload}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="finanzas"
+                            initialFiles={initialExpense?.files || []}
+                            modelId={initialExpense?.id}
+                            modelType="App\Models\Expense"
+                            onUpdate={() => queryClient.invalidateQueries({ queryKey: ["expenses"] })}
+                        />
                     </div>
 
                     <DialogFooter className="pt-4">

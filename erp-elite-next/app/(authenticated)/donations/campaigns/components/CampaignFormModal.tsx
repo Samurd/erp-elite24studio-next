@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -12,8 +12,8 @@ import { RichSelect } from "@/components/ui/rich-select"
 import MoneyInput from "@/components/ui/money-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DateService } from "@/lib/date-service"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 
 interface CampaignFormModalProps {
     open: boolean
@@ -34,6 +34,7 @@ export default function CampaignFormModal({
 }: CampaignFormModalProps) {
     const isEdit = mode === "edit"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full campaign details if editing
     const { data: fetchedCampaign, isLoading } = useQuery({
@@ -59,8 +60,6 @@ export default function CampaignFormModal({
         estimated_budget: "",
         alliances: "",
         description: "",
-        files: [] as File[],
-        pending_file_ids: [] as any[],
     })
 
     useEffect(() => {
@@ -75,8 +74,6 @@ export default function CampaignFormModal({
                 estimated_budget: activeCampaign.estimatedBudget ? activeCampaign.estimatedBudget.toString() : "",
                 alliances: activeCampaign.alliances || "",
                 description: activeCampaign.description || "",
-                files: [],
-                pending_file_ids: [],
             })
         } else {
             setFormData({
@@ -89,8 +86,6 @@ export default function CampaignFormModal({
                 estimated_budget: "",
                 alliances: "",
                 description: "",
-                files: [],
-                pending_file_ids: [],
             })
         }
     }, [activeCampaign, open, isEdit])
@@ -100,38 +95,15 @@ export default function CampaignFormModal({
             const url = isEdit ? `/api/donations/campaigns/${activeCampaign.id}` : "/api/donations/campaigns"
             const method = isEdit ? "PUT" : "POST"
 
-            // 1. Upload local files first
-            const uploadedFileIds: number[] = []
-            if (data.files && data.files.length > 0) {
-                const { uploadFile } = await import("@/actions/files") // Dynamic import
-
-                for (const file of data.files) {
-                    const formData = new FormData()
-                    formData.append("file", file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    } else {
-                        console.error("Failed to upload file:", file.name)
-                        toast.error(`Error al subir archivo: ${file.name}`)
-                    }
-                }
-            }
-
-            // 2. Combine with existing pending cloud files
-            const pendingIds = data.pending_file_ids.map((f: any) => f.id || f)
-
-            const finalPendingIds = [
-                ...pendingIds,
-                ...uploadedFileIds
-            ]
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...data,
-                    pending_file_ids: finalPendingIds
+                    pending_file_ids: uploadedFileIds
                 }),
             })
 
@@ -286,24 +258,19 @@ export default function CampaignFormModal({
 
                     {/* Files */}
                     <div className="border-t pt-6 space-y-4">
-                        {!isEdit ? (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files })}
-                            />
-                        ) : (
-                            activeCampaign?.id && (
-                                <ModelAttachments
-                                    initialFiles={activeCampaign.files || []}
-                                    modelId={activeCampaign.id}
-                                    modelType="App\Models\Campaign"
-
-                                    onUpdate={() => queryClient.invalidateQueries({ queryKey: ["campaign", activeCampaign.id] })}
-                                />
-                            )
-                        )}
+                        <Label className="text-lg font-medium">Banners y Documentos</Label>
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="donaciones"
+                            initialFiles={activeCampaign?.files || []}
+                            modelId={activeCampaign?.id}
+                            modelType="App\Models\Campaign"
+                            onUpdate={() => {
+                                if (activeCampaign?.id) {
+                                    queryClient.invalidateQueries({ queryKey: ["campaign", activeCampaign.id] })
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

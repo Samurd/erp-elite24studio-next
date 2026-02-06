@@ -7,12 +7,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { X, UserPlus } from 'lucide-react';
+import { X, UserPlus, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface ChannelSettingsModalProps {
     open: boolean;
@@ -26,6 +38,7 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
     const { data: session } = authClient.useSession();
     const [name, setName] = useState(channel.name);
     const [description, setDescription] = useState(channel.description || '');
+    const [isPrivate, setIsPrivate] = useState(channel.isPrivate);
     const [loading, setLoading] = useState(false);
     const [members, setMembers] = useState<any[]>([]);
     const [teamMembers, setTeamMembers] = useState<any[]>([]);
@@ -66,6 +79,7 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
 
     // Load members when dialog opens
     useEffect(() => {
+        setIsPrivate(channel.isPrivate);
         if (open && channel.isPrivate) {
             fetchChannelMembers();
             fetchTeamMembers();
@@ -84,10 +98,26 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
             const res = await fetch(`/api/teams/${teamId}/channels/${channel.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description })
+                body: JSON.stringify({ name, description, isPrivate })
             });
 
             if (!res.ok) throw new Error('Failed to update channel');
+
+            // If switching from successfully Public -> Private, add current user as member
+            // so they don't lose visibility of the channel they just edited.
+            if (!channel.isPrivate && isPrivate && session?.user?.id) {
+                try {
+                    await fetch(`/api/teams/${teamId}/channels/${channel.id}/members`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: session.user.id })
+                    });
+                    // Refresh members list silently just in case
+                    fetchChannelMembers();
+                } catch (memberError) {
+                    console.error('Failed to auto-add owner to private channel', memberError);
+                }
+            }
 
             toast.success('Canal actualizado');
             queryClient.invalidateQueries({ queryKey: ['team-channels', teamId] });
@@ -142,6 +172,25 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
         }
     };
 
+    const handleDeleteChannel = async () => {
+        if (!isOwner) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/teams/${teamId}/channels/${channel.id}`, {
+                method: 'DELETE'
+            });
+
+            if (!res.ok) throw new Error('Failed to delete channel');
+
+            toast.success('Canal eliminado');
+            queryClient.invalidateQueries({ queryKey: ['team-channels', teamId] });
+            onOpenChange(false);
+        } catch (error) {
+            toast.error('Error al eliminar canal');
+            setLoading(false);
+        }
+    };
+
     // Filter available members by search query
     const availableMembers = teamMembers
         .filter(tm => !members.some(m => m.id === tm.id))
@@ -186,15 +235,56 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
                                     disabled={!isOwner}
                                 />
                             </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <span className="font-medium">Tipo:</span>
-                                <span>{channel.isPrivate ? 'Privado' : 'Público'}</span>
+                            <div className="flex items-center space-x-2 pt-2">
+                                <Checkbox
+                                    id="isPrivate"
+                                    checked={isPrivate}
+                                    onCheckedChange={(checked) => setIsPrivate(checked === true)}
+                                    disabled={!isOwner}
+                                />
+                                <Label htmlFor="isPrivate">Canal Privado</Label>
                             </div>
                             {isOwner && (
-                                <div className="flex justify-end pt-4">
-                                    <Button type="submit" disabled={loading}>
-                                        {loading ? 'Guardando...' : 'Guardar Cambios'}
-                                    </Button>
+                                <div className="flex flex-col gap-4 pt-4">
+                                    <div className="flex justify-end">
+                                        <Button type="submit" disabled={loading}>
+                                            {loading ? 'Guardando...' : 'Guardar Cambios'}
+                                        </Button>
+                                    </div>
+
+                                    <div className="border-t pt-4 mt-2">
+                                        <h4 className="text-sm font-medium text-red-600 mb-2">Zona de Peligro</h4>
+                                        <div className="bg-red-50 p-3 rounded-md flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-medium text-red-900">Eliminar este canal</p>
+                                                <p className="text-xs text-red-700">Esta acción no se puede deshacer.</p>
+                                            </div>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="sm" type="button" disabled={loading}>
+                                                        <Trash2 className="h-4 w-4 mr-2" />
+                                                        Eliminar
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>¿Susat seguro?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            Esta acción no se puede deshacer. Esto eliminará permanentemente el canal
+                                                            <span className="font-bold"> {channel.name} </span>
+                                                            y todos sus mensajes.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={handleDeleteChannel} className="bg-red-600 hover:bg-red-700">
+                                                            Eliminar
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </form>
@@ -244,7 +334,7 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
                                     </ScrollArea>
                                 </div>
 
-                                {isOwner && teamMembers.filter(tm => !members.some(m => m.id === tm.id)).length > 0 && (
+                                {isOwner && (
                                     <div>
                                         <h3 className="font-medium mb-2">Agregar Miembros</h3>
                                         <div className="mb-2">
@@ -257,9 +347,21 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
                                         </div>
                                         <ScrollArea className="h-[200px] border rounded-md p-2">
                                             {availableMembers.length === 0 ? (
-                                                <div className="text-center text-sm text-gray-500 py-4">
-                                                    {searchQuery ? 'No se encontraron miembros' : 'No hay miembros disponibles'}
-                                                </div>
+                                                searchQuery ? (
+                                                    <div className="text-center text-sm text-gray-500 py-4">No se encontraron miembros</div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-3">
+                                                        <div className="bg-gray-100 p-3 rounded-full">
+                                                            <UserPlus className="h-6 w-6 text-gray-400" />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className="text-sm font-medium text-gray-900">No hay miembros disponibles</p>
+                                                            <p className="text-xs text-gray-500">
+                                                                Para agregar personas a este canal, primero deben ser miembros del equipo.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )
                                             ) : (
                                                 <div className="space-y-2">
                                                     {availableMembers.map(member => (
@@ -291,8 +393,9 @@ export function ChannelSettingsModal({ open, onOpenChange, channel, teamId, isOw
                                 )}
                             </div>
                         </TabsContent>
-                    )}
-                </Tabs>
+                    )
+                    }
+                </Tabs >
             </DialogContent >
         </Dialog >
     );

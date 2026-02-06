@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -23,10 +23,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Plus } from "lucide-react"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
-import { useState, useEffect } from "react"
-import { uploadFile } from "@/actions/files"
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
+import { useState, useEffect, useRef } from "react"
+
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateService } from "@/lib/date-service"
 
@@ -71,19 +71,23 @@ const employeeSchema = z.object({
 type EmployeeFormValues = z.infer<typeof employeeSchema>
 
 interface EmployeeFormProps {
-    initialData?: any
+    initialData?: EmployeeData
     isEditing?: boolean
-    departments: any[]
-    genderOptions: any[]
-    educationOptions: any[]
-    maritalStatusOptions: any[]
+    departments: SelectOption[]
+    genderOptions: SelectOption[]
+    educationOptions: SelectOption[]
+    maritalStatusOptions: SelectOption[]
 }
 
-interface FileModel {
-    id: number;
+interface SelectOption {
+    id: number | string;
     name: string;
-    size: number | null;
-    url: string;
+}
+
+interface EmployeeData {
+    id?: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any; // Allow loose typing for dynamic backend data but better than 'any' everywhere
 }
 
 export function EmployeeForm({
@@ -96,9 +100,8 @@ export function EmployeeForm({
 }: EmployeeFormProps) {
     const router = useRouter()
     const queryClient = useQueryClient()
-    const [currentData, setCurrentData] = useState(initialData)
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<FileModel[]>([])
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
+    // Removed files and pendingCloudFiles state
     const [isUploading, setIsUploading] = useState(false)
     const [showDepartmentModal, setShowDepartmentModal] = useState(false)
     const [newDepartmentName, setNewDepartmentName] = useState("")
@@ -135,41 +138,20 @@ export function EmployeeForm({
         }
     })
 
-    // Fetch full data when form opens in edit mode
-    useEffect(() => {
-        const fetchFullData = async () => {
-            if (initialData && isEditing && initialData.id) {
-                try {
-                    const res = await fetch(`/api/rrhh/employees/${initialData.id}`);
-                    if (res.ok) {
-                        const fullData = await res.json();
-                        setCurrentData(fullData);
-                    }
-                } catch (error) {
-                    console.error("Error fetching full employee data:", error);
-                    setCurrentData(initialData);
-                }
-            } else {
-                setCurrentData(initialData);
-            }
-        };
+    // Fetch full data when form opens in edit mode using useQuery
+    const { data: fetchedData, refetch } = useQuery({
+        queryKey: ["employee", initialData?.id],
+        queryFn: async () => {
+            if (!initialData?.id) return null;
+            const res = await fetch(`/api/rrhh/employees/${initialData.id}`);
+            if (!res.ok) throw new Error("Failed to fetch employee");
+            return res.json();
+        },
+        enabled: isEditing && !!initialData?.id,
+        initialData: initialData
+    });
 
-        fetchFullData();
-    }, [initialData, isEditing]);
-
-    const refreshData = async () => {
-        if (currentData?.id) {
-            try {
-                const res = await fetch(`/api/rrhh/employees/${currentData.id}`);
-                if (res.ok) {
-                    const freshData = await res.json();
-                    setCurrentData(freshData);
-                }
-            } catch (error) {
-                // console.error("Error refreshing employee data:", error);
-            }
-        }
-    };
+    const currentData = fetchedData || initialData;
 
     useEffect(() => {
         if (currentData) {
@@ -211,8 +193,12 @@ export function EmployeeForm({
 
     const mutation = useMutation({
         mutationFn: async (data: EmployeeFormValues) => {
+            if (isEditing && !initialData?.id) {
+                throw new Error("Missing employee ID");
+            }
+
             const url = isEditing
-                ? `/api/rrhh/employees/${initialData.id}`
+                ? `/api/rrhh/employees/${initialData!.id}`
                 : "/api/rrhh/employees"
 
             const method = isEditing ? "PUT" : "POST"
@@ -241,6 +227,8 @@ export function EmployeeForm({
 
     const deleteMutation = useMutation({
         mutationFn: async () => {
+            if (!initialData?.id) throw new Error("Missing employee ID");
+
             const res = await fetch(`/api/rrhh/employees/${initialData.id}`, {
                 method: "DELETE"
             })
@@ -256,27 +244,15 @@ export function EmployeeForm({
     const onSubmit = async (data: EmployeeFormValues) => {
         setIsUploading(true);
         try {
-            const uploadedFileIds: number[] = [];
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
 
-            // Upload new files
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const result = await uploadFile(formData);
-                    if (result.success && result.file) {
-                        uploadedFileIds.push(result.file.id);
-                    } else {
-                        toast.error(`Error al subir ${file.name}`);
-                        setIsUploading(false);
-                        return;
-                    }
-                }
-            }
-
-            // Combine uploaded IDs with pending cloud IDs
-            const cloudIds = pendingCloudFiles.map(f => f.id);
-            data.pending_file_ids = [...cloudIds, ...uploadedFileIds];
+            // Combine uploaded IDs (if needed, but ref handles it mostly, unless we need to attach explicity)
+            // ModelAttachments upload() returns IDs of files uploaded to the 'pending' state or attached if modelId was present.
+            // If modelId is present in ModelAttachments, it attaches them directly usually (check implementation).
+            // But if we are CREATING, we need the IDs to send to backend.
+            // data.pending_file_ids = [...cloudIds, ...uploadedFileIds];
+            data.pending_file_ids = uploadedFileIds;
 
             mutation.mutate(data);
         } catch (error) {
@@ -715,7 +691,7 @@ export function EmployeeForm({
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>Número de Dependientes</FormLabel>
-                                                <FormControl><Input {...field} value={field.value ?? 0} onChange={(e) => field.onChange(e.target.valueAsNumber)} type="number" min="0" /></FormControl>
+                                                <FormControl><Input {...field} value={Number(field.value) || 0} onChange={(e) => field.onChange(e.target.valueAsNumber)} type="number" min="0" /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
@@ -723,22 +699,16 @@ export function EmployeeForm({
                                 </div>
                             </TabsContent>
 
-                            <TabsContent value="files" className="mt-0 space-y-6">
-                                {currentData && currentData.id ? (
-                                    <ModelAttachments
-                                        initialFiles={currentData?.files || []}
-                                        modelId={currentData.id}
-                                        modelType="App\Models\Employee"
-                                        onUpdate={refreshData}
-                                    />
-                                ) : (
-                                    <ModelAttachmentsCreator
-                                        files={files}
-                                        onFilesChange={setFiles}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={setPendingCloudFiles}
-                                    />
-                                )}
+                            <TabsContent value="files" forceMount={true} className="mt-0 space-y-6 data-[state=inactive]:hidden">
+                                {/* Use ModelAttachments */}
+                                <ModelAttachments
+                                    ref={attachmentsRef}
+                                    areaSlug="rrhh"
+                                    initialFiles={currentData?.files || []}
+                                    modelId={currentData?.id}
+                                    modelType="App\Models\Employee"
+                                    onUpdate={() => refetch()}
+                                />
                             </TabsContent>
                         </div>
                     </Tabs>

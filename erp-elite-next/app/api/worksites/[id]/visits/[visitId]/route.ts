@@ -1,7 +1,7 @@
 
 import { db } from "@/lib/db";
-import { visits } from "@/drizzle/schema";
-import { eq } from "drizzle-orm";
+import { visits, files, filesLinks } from "@/drizzle/schema";
+import { eq, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -26,6 +26,26 @@ export async function GET(
                 { status: 404 }
             );
         }
+
+        // Fetch associated files
+        const associatedFiles = await db.select({
+            id: files.id,
+            name: files.name,
+            path: files.path,
+            mimeType: files.mimeType,
+            size: files.size,
+        })
+            .from(files)
+            .innerJoin(filesLinks, eq(files.id, filesLinks.fileId))
+            .where(and(
+                eq(filesLinks.fileableType, 'App\\Models\\WorksiteVisit'),
+                eq(filesLinks.fileableId, id)
+            ));
+
+        (visit as any).files = associatedFiles.map(f => ({
+            ...f,
+            url: f.path
+        }));
 
         return NextResponse.json(visit);
     } catch (error) {
@@ -66,6 +86,18 @@ export async function PUT(
             })
             .where(eq(visits.id, id))
             .returning();
+
+        if (body.pending_file_ids && body.pending_file_ids.length > 0) {
+            for (const fileId of body.pending_file_ids) {
+                await db.insert(filesLinks).values({
+                    fileId: parseInt(fileId),
+                    fileableId: id,
+                    fileableType: 'App\\Models\\WorksiteVisit',
+                }).onConflictDoNothing({
+                    target: [filesLinks.fileId, filesLinks.fileableId, filesLinks.fileableType]
+                });
+            }
+        }
 
         return NextResponse.json(updatedVisit[0]);
 

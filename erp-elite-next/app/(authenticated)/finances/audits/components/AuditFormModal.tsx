@@ -1,7 +1,7 @@
 "use client";
 
 import { useForm } from "react-hook-form";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichSelect } from "@/components/ui/rich-select";
 import { toast } from "sonner";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { DateService } from "@/lib/date-service";
 
 interface AuditFormModalProps {
@@ -24,8 +24,7 @@ interface AuditFormModalProps {
 export default function AuditFormModal({ isOpen, onClose, record, readOnly = false }: AuditFormModalProps) {
     const queryClient = useQueryClient();
     const isEditing = !!record;
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
-    const [files, setFiles] = useState<File[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     // Fetch full audit record details including files when editing/viewing
     const { data: fetchedRecord, isLoading: isLoadingRecord } = useQuery({
@@ -76,8 +75,6 @@ export default function AuditFormModal({ isOpen, onClose, record, readOnly = fal
                     status_id: "",
                     observations: "",
                 });
-                setFiles([]);
-                setPendingCloudFiles([]);
             }
         }
     }, [isOpen, activeRecord, form]);
@@ -103,28 +100,12 @@ export default function AuditFormModal({ isOpen, onClose, record, readOnly = fal
             const url = isEditing ? `/api/finances/audits/${record.id}` : "/api/finances/audits";
             const method = isEditing ? "PUT" : "POST";
 
-            let uploadedFileIds: number[] = [];
-
-            // Upload new files if any
-            if (files.length > 0) {
-                const { uploadFile } = await import("@/actions/files");
-                for (const file of files) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
-            }
-
-            // Combine uploaded IDs with pending cloud file IDs
-            const pendingIds = pendingCloudFiles.map(f => f.id);
-            const allFileIds = [...uploadedFileIds, ...pendingIds];
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
 
             const payload = {
                 ...data,
-                pending_file_ids: allFileIds
+                pending_file_ids: uploadedFileIds
             };
 
             const response = await fetch(url, {
@@ -257,24 +238,19 @@ export default function AuditFormModal({ isOpen, onClose, record, readOnly = fal
                     {/* Archivos Adjuntos */}
                     <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-                        {isEditing || readOnly ? (
-                            <ModelAttachments
-                                initialFiles={activeRecord?.files || []}
-                                modelId={activeRecord?.id}
-                                modelType="App\Models\Audit"
-                                onUpdate={() => {
-                                    queryClient.invalidateQueries({ queryKey: ["audits"] });
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug={typeOptions.find((t: any) => t.id.toString() === form.watch("type_id"))?.slug || "finanzas"}
+                            initialFiles={activeRecord?.files || []}
+                            modelId={activeRecord?.id}
+                            modelType="App\Models\Audit"
+                            onUpdate={() => {
+                                queryClient.invalidateQueries({ queryKey: ["audits"] });
+                                if (activeRecord?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["audit-record", activeRecord?.id] });
-                                }}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={setFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                                }
+                            }}
+                        />
                     </div>
 
                     {!readOnly && (

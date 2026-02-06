@@ -35,6 +35,8 @@ import {
 } from "@/components/ui/select";
 import { RichSelect } from "@/components/ui/rich-select";
 import { DateService } from "@/lib/date-service";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
+import { useRef } from "react";
 
 const visitSchema = z.object({
     visit_date: z.string().min(1, "La fecha es requerida"),
@@ -59,6 +61,7 @@ export function VisitFormModal({
 }: VisitFormModalProps) {
     const isEditing = !!visit;
     const queryClient = useQueryClient();
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     // Fetch full visit details if editing
     const { data: fetchedVisit, isLoading } = useQuery({
@@ -122,10 +125,13 @@ export function VisitFormModal({
     // Mutations
     const createMutation = useMutation({
         mutationFn: async (values: z.infer<typeof visitSchema>) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            const payload = { ...values, pending_file_ids: allFileIds };
+
             const res = await fetch(`/api/worksites/${worksiteId}/visits`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error("Failed to create visit");
             return res.json();
@@ -140,10 +146,13 @@ export function VisitFormModal({
 
     const updateMutation = useMutation({
         mutationFn: async (values: z.infer<typeof visitSchema>) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            const payload = { ...values, pending_file_ids: allFileIds };
+
             const res = await fetch(`/api/worksites/${worksiteId}/visits/${visit.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error("Failed to update visit");
             return res.json();
@@ -277,6 +286,24 @@ export function VisitFormModal({
                                 />
                             </div>
 
+                        </div>
+
+                        {/* Attachments */}
+                        <div className="md:col-span-2 space-y-2">
+                            <FormLabel className="mb-2 block">Archivos Adjuntos</FormLabel>
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="obras"
+                                initialFiles={activeVisit?.files || []}
+                                modelId={activeVisit?.id}
+                                modelType="App\Models\WorksiteVisit"
+                                onUpdate={() => {
+                                    if (activeVisit?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["worksite-visit", activeVisit.id] });
+                                        queryClient.invalidateQueries({ queryKey: ["worksite-visits", worksiteId] });
+                                    }
+                                }}
+                            />
                         </div>
 
                         <DialogFooter>

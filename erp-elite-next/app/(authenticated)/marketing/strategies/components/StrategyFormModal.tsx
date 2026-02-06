@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichSelect } from "@/components/ui/rich-select";
 import { toast } from "sonner";
 import { Target } from "lucide-react";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { DateService } from "@/lib/date-service";
 
 interface StrategyFormModalProps {
@@ -27,6 +26,7 @@ interface StrategyFormModalProps {
 export default function StrategyFormModal({ open, onClose, strategy, statusOptions, responsibleOptions }: StrategyFormModalProps) {
     const isEdit = !!strategy;
     const queryClient = useQueryClient();
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     // Fetch full strategy details including files for realtime updates
     const { data: fetchedStrategy } = useQuery({
@@ -93,13 +93,18 @@ export default function StrategyFormModal({ open, onClose, strategy, statusOptio
 
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            // Remove 'files' from payload if it exists in data object to avoid circular JSON (if it was File objects)
+            // But we can just override pending_file_ids
+            const payload = { ...data, pending_file_ids: allFileIds };
+
             const url = isEdit ? `/api/marketing/strategies/${strategy.id}` : "/api/marketing/strategies";
             const method = isEdit ? "PUT" : "POST";
 
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
+                body: JSON.stringify(payload),
             });
 
             if (!res.ok) {
@@ -268,24 +273,19 @@ export default function StrategyFormModal({ open, onClose, strategy, statusOptio
                     {/* Files */}
                     <div className="border-t pt-4">
                         <Label className="block mb-3">Archivos Adjuntos</Label>
-                        {isEdit ? (
-                            <ModelAttachments
-                                modelId={activeStrategy.id}
-                                modelType="App\\Models\\Strategy"
-                                initialFiles={activeStrategy.files || []}
-                                onUpdate={() => {
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={activeStrategy?.id}
+                            modelType="App\Models\Strategy"
+                            initialFiles={activeStrategy?.files || []}
+                            onUpdate={() => {
+                                if (activeStrategy?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["strategy", activeStrategy.id] });
                                     queryClient.invalidateQueries({ queryKey: ["strategies"] });
-                                }}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids as any}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files as any })}
-                            />
-                        )}
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

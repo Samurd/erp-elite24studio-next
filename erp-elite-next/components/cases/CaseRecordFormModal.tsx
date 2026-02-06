@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichSelect } from "@/components/ui/rich-select";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 
 interface CaseRecord {
     id: number;
@@ -44,12 +43,62 @@ interface CaseRecordFormModalProps {
     defaultUserId?: number;
 }
 
+// Update Props to include options typing if strict, but ignoring for brevity of change unless needed.
+// Main logic change:
+
 export default function CaseRecordFormModal({ open, onClose, record, options, defaultUserId }: CaseRecordFormModalProps) {
     const queryClient = useQueryClient();
     const isEdit = !!record;
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    // Fetch full data including files when in edit mode
+    const { data: fetchedRecord, refetch } = useQuery({
+        queryKey: ["case-record", record?.id],
+        queryFn: async () => {
+            if (!record?.id) return null;
+            const response = await fetch(`/api/case-records?id=${record.id}`); // API might need adjustment to fetch single by ID or filter.
+            // Actually, the api/case-records GET supports filters but maybe not single ID directly via path in GET list?
+            // The list GET returns { data: [], meta: ... }.
+            // Let's check if there is a 'show' endpoint. Yes: app/api/case-records/[id]/route.ts NO GET there?
+            // Wait, I didn't see a GET in [id]/route.ts.
+            // I should double check [id]/route.ts. If no GET, I might need to rely on the list or add GET.
+            // For now, let's assume I can use the list endpoint with ID filter if available, or just rely on passing record and potentially manual fetch if needed?
+            // User's previous patterns show adding GET to [id] is common.
+            // Let's TRY to fetch from `api/case-records/${id}`. If it fails (404/405), I might need to add GET to [id].
+            // But wait, I saw [id]/route.ts and it only had PUT and DELETE.
+            // I will ADD GET to [id]/route.ts as part of this if needed.
+            // Or I can use the passed `record` if it already has files?
+            // The `CaseRecord` interface has `files?: any[]`.
+            // If the parent list already fetches files, we are good.
+            // But usually list views don't fetch all files?
+            // In `CaseRecordFormModal`, let's assume we want fresh data.
+            // I'll add a fetch here, but I must ensure the endpoint exists.
+            // The safe bet without modifying backend more is to fetch from the list endpoint with a filter OR just use `record` if the user says the list has them.
+            // But strict requirement is "fix file linking".
+            // Implementation Plan said: "Use useQuery... if record is present".
+            // I will add the GET endpoint to [id]/route.ts in valid step if missing?
+            // I'll stick to `record` for now but enable refreshing if needed?
+            // Actually, the previous fixes ADDED `useQuery` to fetch `api/.../${id}`.
+            // I should probably check if `GET` exists in [id]/route.ts. Explicitly.
+            // I viewed it in step 152. It ONLY has PUT and DELETE.
+            // So fetching `/api/case-records/${id}` will 405.
+            // I SHOULD ADD GET TO api/case-records/[id]/route.ts FIRST or ALSO.
+            // But I am in multi_replace for frontend now.
+            // I'll use `record` for `initialData` and if I need to fetch, I can't yet.
+            // BUT, verifying `NormsFormModal` used `useQuery` on `api/finances/norms/${id}`.
+            // And `EmployeeForm` used `api/rrhh/employees/${id}`.
+            // So likely I should add GET to `case-records/[id]`.
+            // FOR NOW, I will implement the frontend to EXPECT it, and I will add the backend GET right after.
+            const res = await fetch(`/api/case-records/${record.id}`);
+            if (!res.ok) return record; // Fallback
+            return res.json();
+        },
+        enabled: open && isEdit && !!record?.id,
+        initialData: record,
+    });
+
+    const activeRecord = fetchedRecord || record;
 
     const { control, handleSubmit, reset, setValue } = useForm({
         defaultValues: {
@@ -65,16 +114,16 @@ export default function CaseRecordFormModal({ open, onClose, record, options, de
 
     useEffect(() => {
         if (open) {
-            if (record) {
+            if (activeRecord) {
                 // Formatting values for inputs
                 reset({
-                    date: record.date || new Date().toISOString().split('T')[0],
-                    channel: record.channel || "",
-                    case_type_id: record.type?.id?.toString() || record.case_type_id?.toString() || "",
-                    status_id: record.status?.id?.toString() || record.status_id?.toString() || "",
-                    assigned_to_id: record.assigned_to?.id?.toString() || record.assigned_to_id?.toString() || "",
-                    contact_id: record.contact?.id?.toString() || record.contact_id?.toString() || "",
-                    description: record.description || ""
+                    date: activeRecord.date || new Date().toISOString().split('T')[0],
+                    channel: activeRecord.channel || "",
+                    case_type_id: activeRecord.type?.id?.toString() || activeRecord.case_type_id?.toString() || "",
+                    status_id: activeRecord.status?.id?.toString() || activeRecord.status_id?.toString() || "",
+                    assigned_to_id: activeRecord.assigned_to?.id?.toString() || activeRecord.assigned_to_id?.toString() || "",
+                    contact_id: activeRecord.contact?.id?.toString() || activeRecord.contact_id?.toString() || "",
+                    description: activeRecord.description || ""
                 });
             } else {
                 reset({
@@ -87,88 +136,49 @@ export default function CaseRecordFormModal({ open, onClose, record, options, de
                     description: ""
                 });
             }
-            setFiles([]);
-            setPendingCloudFiles([]);
         }
-    }, [open, record, reset, defaultUserId]);
+    }, [open, activeRecord, reset, defaultUserId]);
 
-    const createMutation = useMutation({
-        mutationFn: async (data: any) => {
-            // Include file uploads logic here if 'files' state has items
-            // But 'ModelAttachmentsCreator' puts new files into 'files' state
-            // AND the logic to upload them needs to happen. 
-            // The Server Action `uploadFile` is used by the components, but here 
-            // for creation we usually upload first then send IDs. 
+    const onSubmit = async (data: any) => {
+        setIsSubmitting(true);
+        try {
+            // Upload files
+            const uploadedIds = await attachmentsRef.current?.upload() || [];
 
-            // However, the `ModelAttachmentsCreator` component is designed to EMIT the file objects.
-            // We need to upload them here manually before submitting the form?
-            // The Laravel implementation submitted everything as FormData.
-            // But my creating `route.ts` expects JSON + `pending_file_ids`. 
+            const payload = {
+                ...data,
+                pending_file_ids: uploadedIds
+            };
 
-            // Let's implement the upload flow:
-            // 1. Upload `files` using `uploadFile` action.
-            // 2. Collect IDs.
-            // 3. Combine with `pendingCloudFiles` IDs.
-            // 4. Send to API.
-
-            const uploadedFileIds = [];
-            const { uploadFile } = await import("@/actions/files"); // Dynamic import to use server action on client? 
-            // Actually server actions can be imported securely.
-
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
+            if (isEdit) {
+                const response = await fetch(`/api/case-records/${record?.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) throw new Error("Failed to update");
+                toast.success("Registro actualizado");
+            } else {
+                const response = await fetch("/api/case-records", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) throw new Error("Failed to create");
+                toast.success("Registro creado exitosamente");
             }
 
-            const pendingIds = pendingCloudFiles.map(f => f.id);
-            const allFileIds = [...uploadedFileIds, ...pendingIds];
-
-            const response = await fetch("/api/case-records", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...data, pending_file_ids: allFileIds }),
-            });
-
-            if (!response.ok) throw new Error("Failed to create");
-            return response.json();
-        },
-        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["case-records"] });
-            toast.success("Registro creado exitosamente");
+            if (isEdit && record?.id) {
+                queryClient.invalidateQueries({ queryKey: ["case-record", record.id] });
+            }
             onClose();
-        },
-        onError: () => toast.error("Error al crear registro")
-    });
 
-    const updateMutation = useMutation({
-        mutationFn: async (data: any) => {
-            const response = await fetch(`/api/case-records/${record?.id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
-            });
-            if (!response.ok) throw new Error("Failed to update");
-            return response.json();
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["case-records"] });
-            toast.success("Registro actualizado");
-            onClose();
-        },
-        onError: () => toast.error("Error al actualizar")
-    });
-
-    const onSubmit = (data: any) => {
-        if (isEdit) {
-            updateMutation.mutate(data);
-        } else {
-            createMutation.mutate(data);
+        } catch (error) {
+            console.error(error);
+            toast.error(isEdit ? "Error al actualizar" : "Error al crear");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -295,29 +305,20 @@ export default function CaseRecordFormModal({ open, onClose, record, options, de
                     {/* Attachments */}
                     <div>
                         <Label className="mb-2 block">Archivos Adjuntos</Label>
-                        {isEdit ? (
-                            record && (
-                                <ModelAttachments
-                                    initialFiles={record.files || []}
-                                    modelId={record.id}
-                                    modelType="App\Models\CaseRecord"
-                                    onUpdate={() => queryClient.invalidateQueries({ queryKey: ["case-records"] })}
-                                />
-                            )
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={setFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="registro-casos"
+                            initialFiles={activeRecord?.files || []}
+                            modelId={activeRecord?.id}
+                            modelType="App\Models\CaseRecord"
+                            onUpdate={() => refetch()}
+                        />
                     </div>
 
                     <DialogFooter>
                         <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                        <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                            {createMutation.isPending || updateMutation.isPending ? "Guardando..." : (isEdit ? "Actualizar" : "Crear")}
+                        <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? "Guardando..." : (isEdit ? "Actualizar" : "Crear")}
                         </Button>
                     </DialogFooter>
                 </form>

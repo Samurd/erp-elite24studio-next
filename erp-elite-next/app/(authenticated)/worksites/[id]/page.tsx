@@ -28,7 +28,7 @@ export default function WorksiteDetailsPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     const { data: worksite, isLoading, refetch } = useQuery({
-        queryKey: ["worksite", id],
+        queryKey: ["worksite", parseInt(id)],
         queryFn: async () => {
             const res = await fetch(`/api/worksites/${id}`);
             if (!res.ok) throw new Error("Failed to fetch worksite");

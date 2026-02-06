@@ -147,7 +147,7 @@ export function WorksiteFormModal({
         onSuccess: () => {
             toast.success("Obra actualizada exitosamente");
             queryClient.invalidateQueries({ queryKey: ["worksites"] });
-            queryClient.invalidateQueries({ queryKey: ["worksite", worksite?.id] });
+            queryClient.invalidateQueries({ queryKey: ["worksite"] });
             onClose();
         },
         onError: () => toast.error("Error al actualizar la obra"),

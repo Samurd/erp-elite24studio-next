@@ -6,15 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Smile, Paperclip, Circle, Clock, Check, CheckCheck } from 'lucide-react';
+import { Send, Smile, Paperclip, Circle, Clock, Check, CheckCheck, X, Download, File as FileIcon } from 'lucide-react';
 import { useQuery, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
-import ModelAttachmentsCreator from '@/components/cloud/ModelAttachmentsCreator';
-import { uploadFile } from '@/actions/files';
+import ModelAttachments, { ModelAttachmentsRef } from '@/components/cloud/ModelAttachments';
+// Removed uploadFile import as it interacts via ModelAttachments ref
 
 interface ChatWindowProps {
     roomId: string; // e.g., 'channel:1' or 'private:1'
@@ -31,8 +31,8 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
     const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showAttachments, setShowAttachments] = useState(false);
-    const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const [fileCount, setFileCount] = useState(0);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
     const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -80,7 +80,7 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
         isFetchingNextPage
     } = useInfiniteQuery({
         queryKey: ['messages', roomId],
-        queryFn: async ({ pageParam }) => {
+        queryFn: async ({ pageParam }: { pageParam: any }) => {
             const type = isPrivate ? 'private' : 'channel';
             const url = new URL(`/api/chats/${numericId}/messages`, window.location.origin);
             url.searchParams.set('type', type);
@@ -250,27 +250,13 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
     }, [socket, roomId, queryClient, currentUserId, otherUser?.id]);
 
     const handleSendMessage = async () => {
-        if ((!inputText.trim() && attachedFiles.length === 0 && pendingCloudFiles.length === 0) || !currentUserId || !socket || isSending) return;
+        if ((!inputText.trim() && fileCount === 0) || !currentUserId || !socket || isSending) return;
 
         setIsSending(true);
 
         try {
-            // 1. Upload local files first
-            const uploadedFileIds: number[] = [];
-            if (attachedFiles.length > 0) {
-                for (const file of attachedFiles) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
-            }
-
-            // 2. Collect cloud file IDs
-            const cloudFileIds = pendingCloudFiles.map(f => f.id);
-            const allFileIds = [...uploadedFileIds, ...cloudFileIds];
+            // 1. Upload files via ModelAttachments
+            const uploadedFiles = await attachmentsRef.current?.uploadWithDetails() || [];
 
             // 3. Create optimistic message
             const tempMessage = {
@@ -281,7 +267,7 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
                 userEmail: session?.user?.email || '',
                 type: 'text',
                 createdAt: new Date().toISOString(),
-                files: allFileIds.length > 0 ? allFileIds.map(id => ({ id })) : undefined,
+                files: uploadedFiles.length > 0 ? uploadedFiles : undefined,
                 status: 'pending', // pending, sent, delivered
             };
 
@@ -292,7 +278,7 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
                 content: inputText,
                 roomId,
                 userId: currentUserId,
-                fileIds: allFileIds.length > 0 ? allFileIds : undefined,
+                fileIds: uploadedFiles.length > 0 ? uploadedFiles.map(f => f.id) : undefined,
             };
             // console.log('📤 Sending to Socket.IO:', socketPayload);
 
@@ -306,9 +292,11 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
             });
 
             // Clear input and attachments
+            attachmentsRef.current?.clear();
             setInputText('');
-            setAttachedFiles([]);
-            setPendingCloudFiles([]);
+            setFileCount(0);
+            // setAttachedFiles([]); // Removed
+            // setPendingCloudFiles([]); // Removed
             setShowAttachments(false);
 
             // Auto scroll to bottom
@@ -434,19 +422,35 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
                                     {msg.files && msg.files.length > 0 && (
                                         <div className="mt-2 space-y-1">
                                             {msg.files.map((file: any) => (
-                                                <a
-                                                    key={file.id}
-                                                    href={file.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className={`flex items-center gap-2 text-xs p-2 rounded border ${msg.userId === currentUserId
-                                                        ? 'bg-primary-foreground/10 border-primary-foreground/20 hover:bg-primary-foreground/20'
-                                                        : 'bg-background border-border hover:bg-muted'
-                                                        }`}
-                                                >
-                                                    <Paperclip className="w-3 h-3" />
-                                                    <span className="truncate flex-1">{file.name}</span>
-                                                </a>
+                                                <div key={file.id} className="group flex items-center justify-between p-2 bg-white rounded border border-gray-200 shadow-sm hover:border-blue-200 transition-colors">
+                                                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                                                        <div className="w-8 h-8 flex items-center justify-center rounded bg-blue-50 text-blue-500 border border-blue-100 flex-shrink-0">
+                                                            <FileIcon className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <a
+                                                                href={file.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-xs font-medium text-gray-700 hover:text-blue-600 truncate block hover:underline"
+                                                                title={file.name}
+                                                            >
+                                                                {file.name}
+                                                            </a>
+                                                            {file.size && <span className="text-[10px] text-gray-400 block">{Math.round(file.size / 1024)} KB</span>}
+                                                        </div>
+                                                    </div>
+                                                    <a
+                                                        href={file.url}
+                                                        download
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                                        title="Descargar"
+                                                    >
+                                                        <Download className="w-3 h-3" />
+                                                    </a>
+                                                </div>
                                             ))}
                                         </div>
                                     )}
@@ -475,80 +479,60 @@ export default function ChatWindow({ roomId, title }: ChatWindowProps) {
             </CardContent>
 
             <CardFooter className="p-3 border-t gap-2 flex-col">
-                {/* File attachments preview */}
-                {(attachedFiles.length > 0 || pendingCloudFiles.length > 0) && (
-                    <div className="w-full bg-muted/50 rounded p-2 text-xs">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium">Archivos adjuntos ({attachedFiles.length + pendingCloudFiles.length})</span>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 px-2"
-                                onClick={() => {
-                                    setAttachedFiles([]);
-                                    setPendingCloudFiles([]);
-                                }}
-                            >
-                                Limpiar
-                            </Button>
-                        </div>
-                        <div className="space-y-1">
-                            {attachedFiles.map((file, idx) => (
-                                <div key={idx} className="text-xs text-muted-foreground truncate">
-                                    📎 {file.name}
-                                </div>
-                            ))}
-                            {pendingCloudFiles.map((file) => (
-                                <div key={file.id} className="text-xs text-muted-foreground truncate">
-                                    ☁️ {file.name}
-                                </div>
-                            ))}
+                {/* File attachments preview removed, handled by ModelAttachments in Popover */}
+
+                <div className="w-full">
+                    {/* Persistent Attachment Area */}
+                    <div className="mb-2 border rounded-lg overflow-hidden bg-background shadow-sm transition-all duration-200" style={{ display: showAttachments ? 'block' : 'none' }}>
+                        <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                modelType="App\Models\Message"
+                                onSelectionChange={setFileCount}
+                                compact={true}
+                            />
                         </div>
                     </div>
-                )}
 
-                <div className="flex w-full gap-2">
-                    <Popover open={showAttachments} onOpenChange={setShowAttachments}>
-                        <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost">
-                                <Paperclip className="w-5 h-5" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[500px] p-0" align="start" side="top">
-                            <div className="p-4">
-                                <ModelAttachmentsCreator
-                                    files={attachedFiles}
-                                    onFilesChange={setAttachedFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            </div>
-                        </PopoverContent>
-                    </Popover>
-                    <Input
-                        className="flex-1"
-                        placeholder="Escribe un mensaje..."
-                        value={inputText}
-                        onChange={handleInputChange}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    />
-                    <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                        <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost">
-                                <Smile className="w-5 h-5" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-full p-0 border-0" align="end">
-                            <EmojiPicker onEmojiClick={handleEmojiClick} width={350} height={400} />
-                        </PopoverContent>
-                    </Popover>
-                    <Button onClick={handleSendMessage} disabled={isSending || !currentUserId}>
-                        <Send className="w-4 h-4 mr-2" />
-                        {isSending ? 'Enviando...' : 'Enviar'}
-                    </Button>
+                    <div className="flex w-full gap-2 items-end">
+                        <Button
+                            size="icon"
+                            variant={showAttachments || fileCount > 0 ? "secondary" : "ghost"}
+                            onClick={() => setShowAttachments(!showAttachments)}
+                            className="relative shrink-0"
+                            title="Adjuntar archivos"
+                        >
+                            <Paperclip className="w-5 h-5" />
+                            {fileCount > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-background">
+                                    {fileCount}
+                                </span>
+                            )}
+                        </Button>
+                        <Input
+                            className="flex-1"
+                            placeholder="Escribe un mensaje..."
+                            value={inputText}
+                            onChange={handleInputChange}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        />
+                        <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                            <PopoverTrigger asChild>
+                                <Button size="icon" variant="ghost">
+                                    <Smile className="w-5 h-5" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-full p-0 border-0" align="end">
+                                <EmojiPicker onEmojiClick={handleEmojiClick} width={350} height={400} />
+                            </PopoverContent>
+                        </Popover>
+                        <Button onClick={handleSendMessage} disabled={isSending || (!inputText.trim() && fileCount === 0) || !currentUserId}>
+                            <Send className="w-4 h-4 mr-2" />
+                            {isSending ? 'Enviando...' : 'Enviar'}
+                        </Button>
+                    </div>
                 </div>
             </CardFooter>
         </Card>
     );
 }
-

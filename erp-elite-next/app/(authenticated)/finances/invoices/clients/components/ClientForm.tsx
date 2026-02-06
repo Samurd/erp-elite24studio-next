@@ -27,11 +27,11 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MoneyInput from "@/components/ui/money-input";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import Link from "next/link";
 import { DateService } from "@/lib/date-service";
-import { useEffect, useState } from "react";
+import { useRef } from "react";
 
 const formSchema = z.object({
     invoice_date: z.string().min(1, "La fecha es requerida"),
@@ -42,7 +42,6 @@ const formSchema = z.object({
     method_payment: z.string().optional(),
     status_id: z.string().optional(),
     pending_file_ids: z.array(z.number()).optional(),
-    files: z.array(z.any()).optional(), // For UI handling in creator
 });
 
 type ClientFormProps = {
@@ -57,8 +56,7 @@ export default function ClientForm({ invoice, isEditing = false, onSuccess, onCa
 
     const router = useRouter();
     const queryClient = useQueryClient();
-
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -71,7 +69,6 @@ export default function ClientForm({ invoice, isEditing = false, onSuccess, onCa
             method_payment: invoice?.methodPayment || "",
             status_id: invoice?.statusId?.toString() || "",
             pending_file_ids: [],
-            files: [],
         },
     });
 
@@ -139,21 +136,22 @@ export default function ClientForm({ invoice, isEditing = false, onSuccess, onCa
         },
     });
 
-    function onSubmit(values: z.infer<typeof formSchema>) {
-        if (isEditing) {
-            updateMutation.mutate(values);
-        } else {
-            createMutation.mutate(values);
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        try {
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
+            values.pending_file_ids = uploadedFileIds;
+
+            if (isEditing) {
+                updateMutation.mutate(values);
+            } else {
+                createMutation.mutate(values);
+            }
+        } catch (error) {
+            console.error("Error uploading files", error);
+            toast.error("Error subiendo archivos");
         }
     }
-
-    // Generate code placeholder for UI if not editing (handled by server really, but visually typically shown as 'Auto-generated' or empty)
-    // Laravel controller generated it in 'create' method and passed it. 
-    // We can let server handle it on POST, or fetch a "draft" code if strictly required by UI. 
-    // The Laravel form showed it as readonly. 
-    // Let's assume user accepts "Generado automáticos al guardar" or we could fetch one.
-    // Given Laravel experience, users might expect to see it. 
-    // But strictly, simpler to just say "Autogenerado".
 
     return (
         <div className="bg-white rounded-lg shadow-sm p-6 max-w-4xl mx-auto">
@@ -295,38 +293,21 @@ export default function ClientForm({ invoice, isEditing = false, onSuccess, onCa
                         )}
                     />
 
-                    {/* Files Section using Components/Cloud */}
                     <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-
-                        {isEditing && invoice ? (
-                            // If editing, use ModelAttachments to manage existing + add new
-                            <ModelAttachments
-                                initialFiles={invoice.files || []}
-                                modelId={invoice.id}
-                                modelType="App\Models\Invoice"
-                                onUpdate={() => {
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            initialFiles={invoice?.files || []}
+                            areaSlug="finanzas"
+                            modelId={invoice?.id}
+                            modelType="App\Models\Invoice"
+                            onUpdate={() => {
+                                if (invoice?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["invoice", invoice.id] });
-                                    queryClient.invalidateQueries({ queryKey: ["invoices-clients"] });
-                                }}
-                            />
-                        ) : (
-                            <FormField
-                                control={form.control}
-                                name="files"
-                                render={({ field }) => (
-                                    <ModelAttachmentsCreator
-                                        files={field.value || []}
-                                        onFilesChange={field.onChange}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={(files: any[]) => {
-                                            setPendingCloudFiles(files);
-                                            form.setValue("pending_file_ids", files.map((f: any) => f.id));
-                                        }}
-                                    />
-                                )}
-                            />
-                        )}
+                                }
+                                queryClient.invalidateQueries({ queryKey: ["invoices-clients"] });
+                            }}
+                        />
                     </div>
 
                     <div className="flex justify-end gap-3 border-t pt-6">

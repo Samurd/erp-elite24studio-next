@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichSelect } from "@/components/ui/rich-select";
 import { toast } from "sonner";
 import { Briefcase } from "lucide-react";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { DateService } from "@/lib/date-service";
 
 interface CaseFormModalProps {
@@ -28,6 +27,7 @@ interface CaseFormModalProps {
 export default function CaseFormModal({ open, onClose, caseData, typeOptions, statusOptions, responsibleOptions, projectOptions }: CaseFormModalProps) {
     const isEdit = !!caseData;
     const queryClient = useQueryClient();
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
     const [currentCaseData, setCurrentCaseData] = useState(caseData);
 
     const [formData, setFormData] = useState({
@@ -115,10 +115,17 @@ export default function CaseFormModal({ open, onClose, caseData, typeOptions, st
             const url = isEdit ? `/api/marketing/cases/${caseData.id}` : "/api/marketing/cases";
             const method = isEdit ? "PUT" : "POST";
 
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+
+            const payload = {
+                ...data,
+                pending_file_ids: allFileIds
+            };
+
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
+                body: JSON.stringify(payload),
             });
 
             if (!res.ok) {
@@ -266,21 +273,14 @@ export default function CaseFormModal({ open, onClose, caseData, typeOptions, st
                     {/* Files */}
                     <div className="border-t pt-4">
                         <Label className="block mb-3">Archivos Adjuntos</Label>
-                        {isEdit && currentCaseData ? (
-                            <ModelAttachments
-                                modelId={currentCaseData.id}
-                                modelType="App\Models\CaseMarketing"
-                                initialFiles={currentCaseData?.files || []}
-                                onUpdate={refreshCaseData}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids as any}
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files as any })}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={currentCaseData?.id}
+                            modelType="App\Models\CaseMarketing"
+                            initialFiles={currentCaseData?.files || []}
+                            onUpdate={refreshCaseData}
+                        />
                     </div>
 
                     <DialogFooter>

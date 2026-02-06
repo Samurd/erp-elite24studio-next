@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -9,8 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import MoneyInput from "@/components/ui/money-input"
 
 interface SubscriptionFormModalProps {
@@ -24,6 +24,7 @@ interface SubscriptionFormModalProps {
 export default function SubscriptionFormModal({ open, onClose, subscription, statusOptions, frequencyOptions }: SubscriptionFormModalProps) {
     const isEdit = !!subscription
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     const [formData, setFormData] = useState({
         name: "",
@@ -36,8 +37,7 @@ export default function SubscriptionFormModal({ open, onClose, subscription, sta
         notes: "",
     })
 
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
+    // Removed files and pendingCloudFiles state as they are handled by ModelAttachments
 
     // Fetch full details including files when in edit mode
     const { data: subDetails } = useQuery({
@@ -79,38 +79,17 @@ export default function SubscriptionFormModal({ open, onClose, subscription, sta
         }
     }, [effectiveSubscription, open])
 
-    useEffect(() => {
-        if (!open) {
-            setFiles([])
-            setPendingCloudFiles([])
-        }
-    }, [open])
+    // Removed useEffect for resetting files state
 
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const url = isEdit ? `/api/subscriptions/${subscription.id}` : "/api/subscriptions"
             const method = isEdit ? "PUT" : "POST"
 
-            // File upload logic
-            const uploadedFileIds = []
-            // Dynamic import to avoid server/client issues if action uses server-only libs improperly (though here it is client comp)
-            const { uploadFile } = await import("@/actions/files")
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
-
-            const payload = { ...data, pending_file_ids: allFileIds }
+            const payload = { ...data, pending_file_ids: uploadedFileIds }
 
             const res = await fetch(url, {
                 method,
@@ -266,26 +245,19 @@ export default function SubscriptionFormModal({ open, onClose, subscription, sta
                         {/* Attachments */}
                         <div className="md:col-span-2 space-y-2">
                             <Label className="mb-2 block">Archivos Adjuntos</Label>
-                            {isEdit ? (
-                                subscription && (
-                                    <ModelAttachments
-                                        initialFiles={effectiveSubscription.files || []}
-                                        modelId={effectiveSubscription.id}
-                                        modelType="App\Models\Sub"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["subscription", effectiveSubscription.id] })
-                                            queryClient.invalidateQueries({ queryKey: ["subscriptions"] })
-                                        }}
-                                    />
-                                )
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="suscripciones"
+                                initialFiles={effectiveSubscription?.files || []}
+                                modelId={effectiveSubscription?.id}
+                                modelType="App\Models\Sub"
+                                onUpdate={() => {
+                                    if (effectiveSubscription?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["subscription", effectiveSubscription.id] })
+                                    }
+                                    queryClient.invalidateQueries({ queryKey: ["subscriptions"] })
+                                }}
+                            />
                         </div>
                     </div>
 

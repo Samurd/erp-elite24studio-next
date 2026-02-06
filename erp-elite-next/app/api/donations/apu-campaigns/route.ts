@@ -75,9 +75,9 @@ export async function POST(req: NextRequest) {
             unitId: body.unit_id ? parseInt(body.unit_id) : null,
             unitPrice: unitPrice,
             totalPrice: totalPrice,
-        });
+        }).returning({ insertedId: apuCampaigns.id });
 
-        return NextResponse.json({ id: result[0].insertId, message: "APU Campaign created" }, { status: 201 });
+        return NextResponse.json({ id: result[0].insertedId, message: "APU Campaign created" }, { status: 201 });
     } catch (error: any) {
         console.error("Error creating APU campaign:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });

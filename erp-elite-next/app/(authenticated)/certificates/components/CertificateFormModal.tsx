@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { FileIcon, ExternalLink } from "lucide-react"
 import { RichSelect } from "@/components/ui/rich-select"
 import { DateService } from "@/lib/date-service"
@@ -36,8 +35,10 @@ export default function CertificateFormModal({
 }: CertificateFormModalProps) {
     const isView = mode === "view"
     const isEdit = mode === "edit" || mode === "view"
+    const isCreate = mode === "create"
 
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full certificate details including files
     const { data: fetchedCertificate, isLoading } = useQuery({
@@ -63,9 +64,6 @@ export default function CertificateFormModal({
         description: "",
     })
 
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
-
     useEffect(() => {
         if (activeCertificate) {
             setFormData({
@@ -90,36 +88,18 @@ export default function CertificateFormModal({
         }
     }, [activeCertificate, open])
 
-    useEffect(() => {
-        if (!open) {
-            setFiles([])
-            setPendingCloudFiles([])
-        }
-    }, [open])
-
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const url = isEdit ? `/api/certificates/${activeCertificate.id}` : "/api/certificates"
             const method = isEdit ? "PUT" : "POST"
 
-            const uploadedFileIds = []
-            const { uploadFile } = await import("@/actions/files")
+            // 1. Upload/Get Files (Unified Logic)
+            // If Create Mode: Uploads all pending files and returns IDs.
+            // If Edit Mode: Returns current IDs (upload happened immediately).
+            const fileIds = await attachmentsRef.current?.upload() || []
 
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
-
-            const payload = { ...data, pending_file_ids: allFileIds }
+            // 2. Prepare Payload
+            const payload = { ...data, pending_file_ids: fileIds }
 
             const res = await fetch(url, {
                 method,
@@ -273,54 +253,23 @@ export default function CertificateFormModal({
                             />
                         </div>
 
-                        {/* Attachments */}
+                        {/* Attachments (Unified) */}
                         <div className="md:col-span-2 space-y-2">
                             <Label className="mb-2 block">Archivos Adjuntos</Label>
-                            {isView ? (
-                                <div className="bg-gray-50 rounded-lg p-4 border border-dashed text-sm">
-                                    {activeCertificate && activeCertificate.files && activeCertificate.files.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {activeCertificate.files.map((file: any) => (
-                                                <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded shadow-sm">
-                                                    <div className="flex items-center space-x-2 truncate">
-                                                        <FileIcon className="w-4 h-4 text-gray-500" />
-                                                        <span className="truncate">{file.name}</span>
-                                                    </div>
-                                                    <a
-                                                        href={file.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800"
-                                                    >
-                                                        <ExternalLink className="w-4 h-4" />
-                                                    </a>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-400 italic">No hay archivos adjuntos.</span>
-                                    )}
-                                </div>
-                            ) : isEdit ? (
-                                activeCertificate && (
-                                    <ModelAttachments
-                                        initialFiles={activeCertificate.files || []}
-                                        modelId={activeCertificate.id}
-                                        modelType="App\Models\Certificate"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["certificate", activeCertificate.id] })
-                                            queryClient.invalidateQueries({ queryKey: ["certificates"] })
-                                        }}
-                                    />
-                                )
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="certificados"
+                                initialFiles={activeCertificate?.files || []}
+                                modelId={activeCertificate?.id}
+                                modelType="App\Models\Certificate"
+                                readOnly={isView}
+                                onUpdate={() => {
+                                    if (activeCertificate?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["certificate", activeCertificate.id] })
+                                        queryClient.invalidateQueries({ queryKey: ["certificates"] })
+                                    }
+                                }}
+                            />
                         </div>
                     </div>
 

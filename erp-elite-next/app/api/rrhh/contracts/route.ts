@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { contracts, employees } from "@/drizzle/schema";
+import { contracts, employees, filesLinks } from "@/drizzle/schema";
 import { desc, eq, and, or, like, inArray, sql } from "drizzle-orm";
 import { DateService } from "@/lib/date-service";
 
@@ -134,10 +134,21 @@ export async function POST(req: NextRequest) {
             updatedAt: DateService.toISO(),
         }).returning({ id: contracts.id });
 
-        // Handle file attachments if any (would need logic like LinkFileAction)
-        // For now, assuming basic create.
+        const contractId = result.id;
 
-        return NextResponse.json({ success: true, id: result.id });
+        if (body.pending_file_ids && body.pending_file_ids.length > 0) {
+            for (const fileId of body.pending_file_ids) {
+                await db.insert(filesLinks).values({
+                    fileId: parseInt(fileId),
+                    fileableId: contractId,
+                    fileableType: 'App\\Models\\Contract',
+                }).onConflictDoNothing({
+                    target: [filesLinks.fileId, filesLinks.fileableId, filesLinks.fileableType]
+                });
+            }
+        }
+
+        return NextResponse.json({ success: true, id: contractId });
 
     } catch (error) {
         console.error("Error creating contract:", error);

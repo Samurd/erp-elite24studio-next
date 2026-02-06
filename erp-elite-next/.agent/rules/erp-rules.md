@@ -13,7 +13,7 @@ trigger: always_on
 
 5. Para money, sea mostrar o input, usa: money-input.tsx y money-display.tsx.
 
-6. Para files, ya hay algo global y conectarlo con la tabla que necesita files, ModelAttachments.tsx ModelAttachmentsCreator.tsx FileSelectorModal.tsx, puedes ver ejemplo de como se usa en /certificates, /licenses.
+6. Para files, ya hay algo global y conectarlo con la tabla que necesita files, ModelAttachments.tsx  FileSelectorModal.tsx, puedes ver ejemplo de como se usa en /certificates, /licenses.
 
 7. usar para tablas y demas shadcn siempre, para la ui.
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -11,8 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichSelect } from "@/components/ui/rich-select"
 import { toast } from "sonner"
 import { Share2 } from "lucide-react"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 
 interface SocialMediaFormModalProps {
     open: boolean
@@ -26,6 +25,7 @@ interface SocialMediaFormModalProps {
 export default function SocialMediaFormModal({ open, onClose, post: initialPost, statusOptions, responsibleOptions, projectOptions }: SocialMediaFormModalProps) {
     const isEdit = !!initialPost
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full post details incase initialPost is incomplete or stale
     const { data: fetchedPost } = useQuery({
@@ -95,22 +95,7 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
             const url = isEdit ? `/api/marketing/social-media/${activePost.id}` : "/api/marketing/social-media"
             const method = isEdit ? "PUT" : "POST"
 
-            const uploadedFileIds = []
-            const { uploadFile } = await import("@/actions/files") // Dynamically import server action
-
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map((file: any) => file.id || file)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
+            const allFileIds = await attachmentsRef.current?.upload() || []
 
             const payload = {
                 ...data,
@@ -276,25 +261,19 @@ export default function SocialMediaFormModal({ open, onClose, post: initialPost,
                     {/* Files */}
                     <div className="border-t pt-4">
                         <Label className="block mb-3">Archivos Adjuntos</Label>
-                        {isEdit && activePost ? (
-                            <ModelAttachments
-                                key={`${activePost.id}-${(activePost.files || []).length}`}
-                                modelId={Number(activePost.id)}
-                                modelType={"App\\Models\\SocialMediaPost"}
-                                initialFiles={activePost.files || []}
-                                onUpdate={() => {
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={activePost?.id}
+                            modelType={"App\\Models\\SocialMediaPost"}
+                            initialFiles={activePost?.files || []}
+                            onUpdate={() => {
+                                if (activePost?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["social-media-post", activePost.id] })
                                     queryClient.invalidateQueries({ queryKey: ["social-media-posts"] })
-                                }}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={(files) => setFiles(files)}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={(files) => setPendingCloudFiles(files)}
-                            />
-                        )}
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

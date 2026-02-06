@@ -1,6 +1,6 @@
 'use client';
 
-import { Paperclip, Reply, Smile, Clock } from 'lucide-react';
+import { Paperclip, Reply, Smile, Clock, Check, Download } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getStorageUrl } from '@/lib/storage-client';
 
@@ -87,13 +87,37 @@ export default function MessageItem({
                     />
 
                     {/* Files */}
+                    {/* Files */}
                     {msg.files && msg.files.length > 0 && (
-                        <div className="mt-2 space-y-1">
+                        <div className="mt-2 space-y-1 w-full max-w-xs">
                             {msg.files.map((f: any, i: number) => (
-                                <a key={i} href={f.url || '#'} target="_blank" className={`flex items-center gap-2 p-2 rounded text-xs ${isMe ? 'bg-blue-500/10' : 'bg-white'} border border-gray-200`}>
-                                    <Paperclip className="h-3 w-3" />
-                                    <span className="truncate max-w-[150px]">{f.name}</span>
-                                </a>
+                                <div key={i} className={`group flex items-center justify-between p-2 rounded border shadow-sm transition-colors ${isMe ? 'bg-blue-600/10 border-blue-600/20' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                                        <div className={`w-8 h-8 flex items-center justify-center rounded flex-shrink-0 ${isMe ? 'bg-blue-600/20 text-blue-700' : 'bg-blue-50 text-blue-500'}`}>
+                                            <Paperclip className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <a
+                                                href={f.url || '#'}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={`text-xs font-medium truncate block hover:underline ${isMe ? 'text-blue-900' : 'text-gray-700'}`}
+                                                title={f.name}
+                                            >
+                                                {f.name}
+                                            </a>
+                                            {f.size && <span className={`text-[10px] block ${isMe ? 'text-blue-800/70' : 'text-gray-400'}`}>{Math.round(f.size / 1024)} KB</span>}
+                                        </div>
+                                    </div>
+                                    <a
+                                        href={f.url || '#'}
+                                        download
+                                        className={`p-1.5 rounded-full transition-colors opacity-0 group-hover:opacity-100 ${isMe ? 'text-blue-800 hover:bg-blue-600/20' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                                        title="Descargar"
+                                    >
+                                        <Check className="w-3 h-3" />
+                                    </a>
+                                </div>
                             ))}
                         </div>
                     )}

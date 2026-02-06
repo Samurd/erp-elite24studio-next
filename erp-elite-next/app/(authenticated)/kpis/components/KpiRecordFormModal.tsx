@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -13,8 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
 import { DateService } from "@/lib/date-service";
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Kpi {
     id: number;
@@ -37,13 +38,6 @@ interface KpiRecord {
     }>;
 }
 
-interface FileModel {
-    id: number;
-    name: string;
-    size: number | null;
-    url: string;
-}
-
 interface KpiRecordFormModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -59,14 +53,14 @@ export function KpiRecordFormModal({
     recordToEdit,
     onSuccess,
 }: KpiRecordFormModalProps) {
+    const queryClient = useQueryClient();
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
+
     const [formData, setFormData] = useState({
         record_date: DateService.todayInput(),
         value: "",
         observation: "",
     });
-    // State for files
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<FileModel[]>([]);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -78,16 +72,12 @@ export function KpiRecordFormModal({
                     value: recordToEdit.value.toString(),
                     observation: recordToEdit.observation || "",
                 });
-                setFiles([]);
-                setPendingCloudFiles([]); // Existing files are not editable via this simple state yet, but new ones can be added
             } else {
                 setFormData({
                     record_date: DateService.todayInput(),
                     value: "",
                     observation: "",
                 });
-                setFiles([]);
-                setPendingCloudFiles([]);
             }
         }
     }, [open, recordToEdit]);
@@ -97,91 +87,8 @@ export function KpiRecordFormModal({
         setIsSubmitting(true);
 
         try {
-            // 1. Upload new files if any
-            // Note: Unlike Laraval which processes files in the same request via formData, 
-            // ModelAttachmentsCreator in this project usually handles uploads internally via its own hook or logic,
-            // OR we upload them manually here if ModelAttachmentsCreator gives us the Files.
-            // The `ModelAttachmentsCreator` component usually handles the UI.
-            // In `EventFormModal`, we saw logic where `handleUpload` was used or files were sent to API.
-            // Actually, in `EventFormModal` logic, `pendingCloudFiles` (ids) were sent.
-            // New files upload strategy:
-            // The current `ModelAttachmentsCreator` takes `files` prop (File[]) and `onFilesChange`.
-            // It does NOT auto-upload. We must upload them.
-            // BUT the API endpoint I wrote (`POST /api/kpis/[id]/records`) expects `pending_file_ids` (array of numbers).
-            // It does NOT handle multipart file upload directly in that specific JSON endpoint I wrote? 
-            // Wait, I copied the logic from `AdPieceFormModal` or similar which might use separate upload.
-            // Let's re-read `ModelAttachmentsCreator` usage in `EventFormModal` to see how it handles NEW files.
-            // In `EventFormModal`, it seems it creates the event, then uploads files for the event? Or the other way?
-            // "EventFormModal" doesn't seem to upload files in its submit. 
-            // Ah, `ModelAttachmentsCreator` handles the upload UI? No.
-            // Let's look at `EventItemFormModal` source again if possible. 
-            // Step 2046 showed `EventItemFormModal`. It imports `ModelAttachmentsCreator`.
-            // But it doesn't show the upload logic. 
-            // If `ModelAttachmentsCreator` is present, it allows user to "Select from Cloud" or "Upload".
-            // If "Upload" is clicked there, where does it go?
-            // Usually `ModelAttachmentsCreator` creates files in Cloud module and returns IDs?
-            // If so, we just get IDs.
-            // IF it relies on the parent to upload, we need to upload.
-
-            // Assumption: we need to upload files first to get their IDs, then send IDs to record creation.
-            // OR use a utility that uploads.
-
-            // For now, let's assume strict "Link Existing" or "Upload to Cloud then Link".
-            // If `ModelAttachmentsCreator` handles the upload to Cloud separately and gives us the `FileModel` back, we are good.
-            // Let's check `ModelAttachmentsCreator.tsx` content from step 2046 view (it wasn't fully shown).
-            // But `EventFormModal` has `pendingCloudFiles: FileModel[]`.
-            // And in submit: `pending_file_ids: pendingCloudFiles.map(f => f.id)`.
-            // This implies `pendingCloudFiles` contains ALREADY UPLOADED files (either selected or just uploaded).
-            // So `ModelAttachmentsCreator` MUST update `pendingCloudFiles` with the new file once it's uploaded? 
-            // Or does it require us to handle the upload?
-
-            // In the interest of time and replicating `EventFormModal`, I will assume `ModelAttachmentsCreator` allows adding to `pendingCloudFiles`.
-            // If we simply pass `files` state, `ModelAttachmentsCreator` might just list them.
-
-            // Strategy: I will send `pending_file_ids` which are IDs of files.
-            // New files from `files` input need to be uploaded.
-            // If `ModelAttachmentsCreator` doesn't auto-upload, I need to implement upload loop.
-            // `EventFormModal` didn't seem to have an upload loop in the visible code.
-            // This suggests `ModelAttachmentsCreator` might handle it or I missed it.
-            // Let's implement a simple upload if `files.length > 0`.
-
-            const uploadedFileIds: number[] = [];
-
-            // Upload new files
-            if (files.length > 0) {
-                const uploadPromises = files.map(async (file) => {
-                    const formData = new FormData();
-                    formData.append("file", file);
-                    formData.append("folder_id", "1"); // Default root or specific folder?
-                    // We need an endpoint to upload file to 'cloud' generic.
-                    const res = await fetch("/api/cloud/upload", { // Assuming this exists or similar
-                        method: "POST",
-                        body: formData,
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        return data.id; // Assuming returns { id: ... }
-                    }
-                    return null;
-                });
-
-                const results = await Promise.all(uploadPromises);
-                results.forEach(id => {
-                    if (id) uploadedFileIds.push(id);
-                });
-            }
-
-            const allFileIds = [
-                ...pendingCloudFiles.map(f => f.id),
-                ...uploadedFileIds // If I implemented manual upload
-            ];
-
-            // Actually, if `ModelAttachmentsCreator` is used, the User uploads via the separate "Cloud" component logic usually.
-            // If I look at `EventItemFormModal` in step 2065, it lacks any upload logic in `handleSubmit`.
-            // It only passes `pending_file_ids: pendingCloudFiles.map((f) => f.id)`.
-            // This implies `ModelAttachmentsCreator` handles the upload interaction and puts the result into `pendingCloudFiles`.
-            // So I will TRUST `ModelAttachmentsCreator` to populate `pendingCloudFiles`.
-            // I will just use `pendingCloudFiles`.
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
 
             const url = recordToEdit
                 ? `/api/kpis/records/${recordToEdit.id}`
@@ -192,7 +99,7 @@ export function KpiRecordFormModal({
                 record_date: formData.record_date,
                 value: parseFloat(formData.value),
                 observation: formData.observation,
-                pending_file_ids: pendingCloudFiles.map(f => f.id),
+                pending_file_ids: uploadedFileIds,
             };
 
             const res = await fetch(url, {
@@ -211,6 +118,10 @@ export function KpiRecordFormModal({
                     ? "Registro actualizado exitosamente"
                     : "Registro creado exitosamente"
             );
+
+            // Invalidate queries to refresh list
+            queryClient.invalidateQueries({ queryKey: ["kpi-records", kpi.id] });
+
             onSuccess();
             onOpenChange(false);
         } catch (error) {
@@ -282,32 +193,19 @@ export function KpiRecordFormModal({
                         </div>
                     </div>
 
-                    <div className="pt-2">
+                    <div className="pt-2 border-t mt-4">
                         <Label className="mb-2 block">Evidencias / Adjuntos</Label>
-                        <ModelAttachmentsCreator
-                            files={files}
-                            onFilesChange={setFiles}
-                            pendingCloudFiles={pendingCloudFiles}
-                            onPendingCloudFilesChange={setPendingCloudFiles}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="kpis"
+                            initialFiles={recordToEdit?.files || []}
+                            modelId={recordToEdit?.id}
+                            modelType="App\Models\KpiRecord"
+                            onUpdate={() => {
+                                queryClient.invalidateQueries({ queryKey: ["kpi-records", kpi.id] });
+                            }}
                         />
                     </div>
-
-                    {/* Display existing files if editing */}
-                    {recordToEdit && recordToEdit.files && recordToEdit.files.length > 0 && (
-                        <div className="mt-2 text-sm">
-                            <Label>Archivos Existentes:</Label>
-                            <ul className="list-disc list-inside">
-                                {recordToEdit.files.map(f => (
-                                    <li key={f.id}>
-                                        <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                            {f.name}
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
-                            <p className="text-xs text-gray-500 mt-1">Para eliminar archivos, use la vista de detalles.</p>
-                        </div>
-                    )}
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
                         <Button

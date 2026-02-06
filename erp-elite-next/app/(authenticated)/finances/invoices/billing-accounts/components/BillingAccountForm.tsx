@@ -27,11 +27,11 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MoneyInput from "@/components/ui/money-input";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import Link from "next/link";
 import { DateService } from "@/lib/date-service";
-import { useState } from "react";
+import { useRef } from "react";
 
 const formSchema = z.object({
     invoice_date: z.string().min(1, "La fecha es requerida"),
@@ -42,7 +42,6 @@ const formSchema = z.object({
     method_payment: z.string().optional(),
     status_id: z.string().optional(),
     pending_file_ids: z.array(z.number()).optional(),
-    files: z.array(z.any()).optional(),
 });
 
 type BillingAccountFormProps = {
@@ -57,8 +56,7 @@ export default function BillingAccountForm({ invoice, isEditing = false, onSucce
 
     const router = useRouter();
     const queryClient = useQueryClient();
-
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -71,7 +69,6 @@ export default function BillingAccountForm({ invoice, isEditing = false, onSucce
             method_payment: invoice?.methodPayment || "",
             status_id: invoice?.statusId?.toString() || "",
             pending_file_ids: [],
-            files: [],
         },
     });
 
@@ -139,11 +136,20 @@ export default function BillingAccountForm({ invoice, isEditing = false, onSucce
         },
     });
 
-    function onSubmit(values: z.infer<typeof formSchema>) {
-        if (isEditing) {
-            updateMutation.mutate(values);
-        } else {
-            createMutation.mutate(values);
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        try {
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
+            values.pending_file_ids = uploadedFileIds;
+
+            if (isEditing) {
+                updateMutation.mutate(values);
+            } else {
+                createMutation.mutate(values);
+            }
+        } catch (error) {
+            console.error("Error upload", error);
+            toast.error("Error subiendo archivos");
         }
     }
 
@@ -287,37 +293,21 @@ export default function BillingAccountForm({ invoice, isEditing = false, onSucce
                         )}
                     />
 
-                    {/* Files Section using Components/Cloud */}
                     <div className="border-t pt-6">
                         <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-
-                        {isEditing && invoice ? (
-                            <ModelAttachments
-                                initialFiles={invoice.files || []}
-                                modelId={invoice.id}
-                                modelType="App\Models\Invoice"
-                                onUpdate={() => {
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            initialFiles={invoice?.files || []}
+                            areaSlug="finanzas"
+                            modelId={invoice?.id}
+                            modelType="App\Models\Invoice"
+                            onUpdate={() => {
+                                if (invoice?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["billing-account", invoice.id] });
-                                    queryClient.invalidateQueries({ queryKey: ["invoices-billing-accounts"] });
-                                }}
-                            />
-                        ) : (
-                            <FormField
-                                control={form.control}
-                                name="files"
-                                render={({ field }) => (
-                                    <ModelAttachmentsCreator
-                                        files={field.value || []}
-                                        onFilesChange={field.onChange}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={(files: any[]) => {
-                                            setPendingCloudFiles(files);
-                                            form.setValue("pending_file_ids", files.map((f: any) => f.id));
-                                        }}
-                                    />
-                                )}
-                            />
-                        )}
+                                }
+                                queryClient.invalidateQueries({ queryKey: ["invoices-billing-accounts"] });
+                            }}
+                        />
                     </div>
 
                     <div className="flex justify-end gap-3 border-t pt-6">

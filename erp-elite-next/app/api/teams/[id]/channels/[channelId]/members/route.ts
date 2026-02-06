@@ -70,6 +70,18 @@ export async function POST(
 
         if (!userId) return NextResponse.json({ error: 'User ID required' }, { status: 400 });
 
+        // Check if already a member
+        const existingMember = await db.select()
+            .from(channelUser)
+            .where(and(
+                eq(channelUser.channelId, channelIdNum),
+                eq(channelUser.userId, userId)
+            ));
+
+        if (existingMember.length > 0) {
+            return NextResponse.json({ success: true, message: 'User is already a member' });
+        }
+
         const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
         await db.insert(channelUser).values({

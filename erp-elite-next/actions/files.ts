@@ -2,7 +2,7 @@
 
 import { join } from "path";
 import { db } from "@/lib/db";
-import { files, filesLinks, folders } from "@/drizzle/schema";
+import { files, filesLinks, folders, areas } from "@/drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from 'uuid';
 import { StorageService } from "@/lib/storage-service";
@@ -15,10 +15,28 @@ export async function uploadFile(formData: FormData) {
     const file = formData.get("file") as File;
     const folderIdStr = formData.get("folderId") as string;
     const userIdStr = formData.get("userId") as string;
+    const isModuleUploadStr = formData.get("isModuleUpload") as string;
 
     // Parse IDs if provided
     const folderId = folderIdStr ? parseInt(folderIdStr) : undefined;
-    const userId = userIdStr ? userIdStr : undefined;
+    const isModuleUpload = isModuleUploadStr === 'true';
+
+    // Get user ID from form data or from session
+    let userId = userIdStr ? userIdStr : undefined;
+
+    // If no userId provided, get from session (for audit purposes)
+    if (!userId) {
+        try {
+            const { auth } = await import("@/lib/auth");
+            const { headers } = await import("next/headers");
+            const session = await auth.api.getSession({
+                headers: await headers()
+            });
+            userId = session?.user?.id;
+        } catch (error) {
+            console.error("Could not get session for file upload:", error);
+        }
+    }
 
     if (!file) {
         throw new Error("No file provided");
@@ -32,25 +50,21 @@ export async function uploadFile(formData: FormData) {
     // Upload via StorageService
     const relativePath = `uploads/cloud/${uniqueName}`;
 
-    // We don't need to manually check drivers here, Service handles it.
-    // However, StorageService.upload needs a Buffer.
-
     const { path: filePath, url: fileUrl, disk } = await StorageService.upload(buffer, relativePath, file.type);
-
-    // disk is returned by service
 
     // Create DB record
     const now = DateService.toISO();
 
-    // Insert file record into database with .returning() for PostgreSQL
+    // For module uploads: folderId = null (won't appear in Mi Cloud)
+    // And set userId = null to hide from getCloudData which filters by user
     const [insertedFile] = await db.insert(files).values({
         name: originalName,
         path: filePath,
         disk: disk,
         mimeType: file.type,
         size: file.size,
-        folderId: folderId || null,
-        userId: userId || null,
+        folderId: isModuleUpload ? null : (folderId || null),
+        userId: isModuleUpload ? null : (userId || null),
         createdAt: now,
         updatedAt: now,
     }).returning();
@@ -73,14 +87,28 @@ export async function uploadFile(formData: FormData) {
     };
 }
 
-export async function attachFileToModel(fileId: number, modelType: string, modelId: number, areaId?: number) {
+// ... (existing imports)
+
+export async function attachFileToModel(fileId: number, modelType: string, modelId: number, areaId?: number, areaSlug?: string) {
     try {
+        let finalAreaId = areaId;
+
+        if (!finalAreaId && areaSlug) {
+            const area = await db.query.areas.findFirst({
+                where: eq(areas.slug, areaSlug),
+                columns: { id: true }
+            });
+            if (area) {
+                finalAreaId = area.id;
+            }
+        }
+
         const now = DateService.toISO();
         await db.insert(filesLinks).values({
             fileId,
             fileableType: modelType,
             fileableId: modelId,
-            areaId: areaId || null,
+            areaId: finalAreaId || null,
             createdAt: now,
             updatedAt: now,
         });
@@ -161,15 +189,26 @@ export async function getFilesForModel(modelType: string, modelId: number) {
 }
 
 export async function getCloudData() {
-    // Ideally we filter by user or permissions, but for now returning all public/user accessible
-    // similar to the Vue component's implied logic
+    // Import auth and headers dynamically
+    const { auth } = await import("@/lib/auth");
+    const { headers } = await import("next/headers");
 
-    const allFolders = await db.select().from(folders);
-    const allFiles = await db.select().from(files);
+    const session = await auth.api.getSession({
+        headers: await headers()
+    });
+
+    if (!session?.user?.id) {
+        throw new Error("Not authenticated");
+    }
+
+    const userId = session.user.id;
+
+    // Only get user's own folders and files
+    const allFolders = await db.select().from(folders).where(eq(folders.userId, userId));
+    const allFiles = await db.select().from(files).where(eq(files.userId, userId));
 
     // Generate URLs for files (with presigned URLs for S3)
     const filesPromises = allFiles.map(async (f) => {
-        // Generate URL based on disk type
         const url = await StorageService.getUrl(f.path) || '';
 
         return {
@@ -192,4 +231,31 @@ export async function getCloudData() {
         })),
         files: filesWithUrls
     };
+}
+
+export async function deleteFile(fileId: number) {
+    try {
+        // 1. Get file info to know path
+        const file = await db.query.files.findFirst({
+            where: eq(files.id, fileId)
+        });
+
+        if (!file) {
+            return { success: false, error: "File not found" };
+        }
+
+        // 2. Delete from Storage
+        if (file.path) {
+            await StorageService.delete(file.path);
+        }
+
+        // 3. Delete from DB
+        await db.delete(filesLinks).where(eq(filesLinks.fileId, fileId));
+        await db.delete(files).where(eq(files.id, fileId));
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting file:", error);
+        return { success: false, error: "Failed to delete file" };
+    }
 }

@@ -39,11 +39,17 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
             })
             .where(eq(caseRecords.id, id));
 
-        // Note: File attachments updates usually happen via separate endpoints or the 'files' array logic.
-        // In the Vue 'Form.vue', it seems attachments are handled by `ModelAttachments` which hits its own endpoints,
-        // OR `files` array is passed. 
-        // For 'update', `ModelAttachments` component handles uploads/detaches directly.
-        // So we don't need to handle files array here unless we want to sync.
+        // Create and Attach files if pending_file_ids are present
+        if (body.pending_file_ids && Array.isArray(body.pending_file_ids) && body.pending_file_ids.length > 0) {
+            try {
+                const { attachFileToModel } = await import("@/actions/files");
+                await Promise.all(body.pending_file_ids.map((fileId: number) =>
+                    attachFileToModel(fileId, "App\\Models\\CaseRecord", id)
+                ));
+            } catch (fileError) {
+                console.error("Error attaching files:", fileError);
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {

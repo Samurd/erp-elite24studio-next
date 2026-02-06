@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { ExternalLink, FileIcon } from "lucide-react"
 import { DateService } from "@/lib/date-service"
 
@@ -37,6 +36,7 @@ export default function LicenseFormModal({
     const isEdit = mode === "edit" || mode === "view"
 
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full license details including files
     const { data: fetchedLicense, isLoading } = useQuery({
@@ -65,9 +65,6 @@ export default function LicenseFormModal({
         requires_extension: false,
         observations: "",
     })
-
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
 
     useEffect(() => {
         if (activeLicense) {
@@ -101,36 +98,16 @@ export default function LicenseFormModal({
         }
     }, [activeLicense, open])
 
-    useEffect(() => {
-        if (!open) {
-            setFiles([])
-            setPendingCloudFiles([])
-        }
-    }, [open])
-
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const url = isEdit ? `/api/licenses/${activeLicense.id}` : "/api/licenses"
             const method = isEdit ? "PUT" : "POST"
 
-            const uploadedFileIds = []
-            const { uploadFile } = await import("@/actions/files")
+            // 1. Upload/Get Files
+            const fileIds = await attachmentsRef.current?.upload() || []
 
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
-
-            const payload = { ...data, pending_file_ids: allFileIds }
+            // 2. Prepare payload
+            const payload = { ...data, pending_file_ids: fileIds }
 
             const res = await fetch(url, {
                 method,
@@ -353,54 +330,23 @@ export default function LicenseFormModal({
                             />
                         </div>
 
-                        {/* Attachments */}
+                        {/* Attachments (Unified) */}
                         <div className="md:col-span-2 space-y-2">
                             <Label className="mb-2 block">Archivos Adjuntos</Label>
-                            {isView ? (
-                                <div className="bg-gray-50 rounded-lg p-4 border border-dashed text-sm">
-                                    {activeLicense && activeLicense.files && activeLicense.files.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {activeLicense.files.map((file: any) => (
-                                                <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded shadow-sm">
-                                                    <div className="flex items-center space-x-2 truncate">
-                                                        <FileIcon className="w-4 h-4 text-gray-500" />
-                                                        <span className="truncate">{file.name}</span>
-                                                    </div>
-                                                    <a
-                                                        href={file.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800"
-                                                    >
-                                                        <ExternalLink className="w-4 h-4" />
-                                                    </a>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-400 italic">No hay archivos adjuntos.</span>
-                                    )}
-                                </div>
-                            ) : isEdit ? (
-                                activeLicense && (
-                                    <ModelAttachments
-                                        initialFiles={activeLicense.files || []}
-                                        modelId={activeLicense.id}
-                                        modelType="App\Models\License"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["license", activeLicense.id] })
-                                            queryClient.invalidateQueries({ queryKey: ["licenses"] })
-                                        }}
-                                    />
-                                )
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="licencias"
+                                initialFiles={activeLicense?.files || []}
+                                modelId={activeLicense?.id}
+                                modelType="App\Models\License"
+                                readOnly={isView}
+                                onUpdate={() => {
+                                    if (activeLicense?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["license", activeLicense.id] })
+                                        queryClient.invalidateQueries({ queryKey: ["licenses"] })
+                                    }
+                                }}
+                            />
                         </div>
                     </div>
 

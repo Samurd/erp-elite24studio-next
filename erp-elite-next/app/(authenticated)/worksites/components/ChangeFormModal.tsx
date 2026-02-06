@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -35,8 +34,7 @@ import {
 } from "@/components/ui/select";
 import { RichSelect } from "@/components/ui/rich-select";
 import { DateService } from "@/lib/date-service";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 
 const changeSchema = z.object({
     change_date: z.string().min(1, "La fecha es requerida"),
@@ -64,8 +62,7 @@ export function ChangeFormModal({
 }: ChangeFormModalProps) {
     const isEditing = !!change;
     const queryClient = useQueryClient();
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     // Fetch full change details including files
     const { data: fetchedChange, isLoading } = useQuery({
@@ -126,8 +123,7 @@ export function ChangeFormModal({
 
     useEffect(() => {
         if (!isOpen) {
-            setFiles([]);
-            setPendingCloudFiles([]);
+            // Reset logic if needed
         }
     }, [isOpen]);
 
@@ -146,10 +142,13 @@ export function ChangeFormModal({
     // Mutations
     const createMutation = useMutation({
         mutationFn: async (values: z.infer<typeof changeSchema>) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            const payload = { ...values, pending_file_ids: allFileIds };
+
             const res = await fetch(`/api/worksites/${worksiteId}/changes`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error("Failed to create change");
             return res.json();
@@ -164,10 +163,13 @@ export function ChangeFormModal({
 
     const updateMutation = useMutation({
         mutationFn: async (values: z.infer<typeof changeSchema>) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            const payload = { ...values, pending_file_ids: allFileIds };
+
             const res = await fetch(`/api/worksites/${worksiteId}/changes/${change.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error("Failed to update change");
             return res.json();
@@ -378,26 +380,19 @@ export function ChangeFormModal({
                             {/* Attachments */}
                             <div className="md:col-span-2 space-y-2">
                                 <FormLabel className="mb-2 block">Archivos Adjuntos</FormLabel>
-                                {isEditing ? (
-                                    activeChange && (
-                                        <ModelAttachments
-                                            initialFiles={activeChange.files || []}
-                                            modelId={activeChange.id}
-                                            modelType="App\Models\WorksiteChange"
-                                            onUpdate={() => {
-                                                queryClient.invalidateQueries({ queryKey: ["worksite-change", activeChange.id] });
-                                                queryClient.invalidateQueries({ queryKey: ["worksite-changes", worksiteId] });
-                                            }}
-                                        />
-                                    )
-                                ) : (
-                                    <ModelAttachmentsCreator
-                                        files={files}
-                                        onFilesChange={setFiles}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={setPendingCloudFiles}
-                                    />
-                                )}
+                                <ModelAttachments
+                                    ref={attachmentsRef}
+                                    areaSlug="obras"
+                                    initialFiles={activeChange?.files || []}
+                                    modelId={activeChange?.id}
+                                    modelType="App\Models\WorksiteChange"
+                                    onUpdate={() => {
+                                        if (activeChange?.id) {
+                                            queryClient.invalidateQueries({ queryKey: ["worksite-change", activeChange.id] });
+                                            queryClient.invalidateQueries({ queryKey: ["worksite-changes", worksiteId] });
+                                        }
+                                    }}
+                                />
                             </div>
 
                         </div>

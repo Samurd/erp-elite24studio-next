@@ -4,10 +4,11 @@ import { Folder, File, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateService } from '@/lib/date-service';
-import { CloudData, CloudItem } from './types';
+import { CloudData, CloudItem, CloudFolder, CloudFile } from './types';
 
 interface CloudListProps {
-    data: CloudData | undefined;
+    folders: CloudFolder[];
+    files: CloudFile[];
     renamingItem: CloudItem | null;
     onRenameChange: (name: string) => void;
     onRenameSubmit: () => void;
@@ -18,7 +19,8 @@ interface CloudListProps {
 }
 
 export default function CloudList({
-    data,
+    folders,
+    files,
     renamingItem,
     onRenameChange,
     onRenameSubmit,
@@ -46,7 +48,7 @@ export default function CloudList({
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                     {/* Folders */}
-                    {data?.folders.map((folder) => (
+                    {folders.map((folder) => (
                         <tr
                             key={`l-folder-${folder.id}`}
                             onClick={() => onOpenFolder(folder.id)}
@@ -100,7 +102,7 @@ export default function CloudList({
                     ))}
 
                     {/* Files */}
-                    {data?.files.map((file) => (
+                    {files.map((file) => (
                         <tr
                             key={`l-file-${file.id}`}
                             onClick={() => onDownloadFile(file)}

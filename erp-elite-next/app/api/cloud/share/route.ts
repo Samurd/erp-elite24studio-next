@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
             where: and(
                 eq(shares.shareableType, modelType),
                 eq(shares.shareableId, parseInt(id)),
-                user_id ? eq(shares.sharedWithUserId, parseInt(user_id)) : undefined,
+                user_id ? eq(shares.sharedWithUserId, user_id) : undefined,
                 team_id ? eq(shares.sharedWithTeamId, parseInt(team_id)) : undefined
             )
         });
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
                 userId: session.user.id,
                 shareableType: modelType,
                 shareableId: parseInt(id),
-                sharedWithUserId: user_id ? parseInt(user_id) : null,
+                sharedWithUserId: user_id ? user_id : null,
                 sharedWithTeamId: team_id ? parseInt(team_id) : null,
                 permission: permission as 'view' | 'edit',
                 shareToken: null,

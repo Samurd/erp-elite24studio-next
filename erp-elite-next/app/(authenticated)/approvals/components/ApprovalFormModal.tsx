@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState, useEffect, useRef } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,10 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RichSelect } from "@/components/ui/rich-select"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { AlertTriangle, FileSignature } from "lucide-react"
-import { uploadFile } from "@/actions/files"
 
 interface ApprovalFormModalProps {
     open: boolean
@@ -35,6 +34,7 @@ export default function ApprovalFormModal({
 }: ApprovalFormModalProps) {
     const isEdit = mode === "edit"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     const [formData, setFormData] = useState({
         name: "",
@@ -43,21 +43,31 @@ export default function ApprovalFormModal({
         priority_id: "",
         description: "",
         all_approvers: false,
-        files: [] as File[],
-        pending_file_ids: [] as number[],
     })
 
+    // Fetch full approval details including files
+    const { data: fetchedApproval, isLoading } = useQuery({
+        queryKey: ["approval", initialData?.id],
+        queryFn: async () => {
+            if (!initialData?.id) return null
+            const res = await fetch(`/api/approvals/${initialData.id}`)
+            if (!res.ok) throw new Error("Failed to fetch approval")
+            return res.json()
+        },
+        enabled: open && !!initialData?.id && isEdit,
+    })
+
+    const activeApproval = fetchedApproval || initialData
+
     useEffect(() => {
-        if (initialData && isEdit) {
+        if (activeApproval && isEdit) {
             setFormData({
-                name: initialData.name || "",
-                buy: initialData.buy === 1,
-                approvers: initialData.approvers ? initialData.approvers.map((a: any) => a.userId.toString()) : [],
-                priority_id: initialData.priorityId ? initialData.priorityId.toString() : "",
-                description: initialData.description || "",
-                all_approvers: initialData.allApprovers === 1,
-                files: [], // Files handled by ModelAttachments in edit
-                pending_file_ids: [],
+                name: activeApproval.name || "",
+                buy: activeApproval.buy === 1,
+                approvers: activeApproval.approvers ? activeApproval.approvers.map((a: any) => a.userId.toString()) : [],
+                priority_id: activeApproval.priorityId ? activeApproval.priorityId.toString() : "",
+                description: activeApproval.description || "",
+                all_approvers: activeApproval.allApprovers === 1,
             })
         } else {
             setFormData({
@@ -67,50 +77,21 @@ export default function ApprovalFormModal({
                 priority_id: "",
                 description: "",
                 all_approvers: false,
-                files: [],
-                pending_file_ids: [],
             })
         }
-    }, [initialData, open, isEdit])
+    }, [activeApproval, open, isEdit])
 
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
-            const url = isEdit ? `/api/approvals/${initialData.id}` : "/api/approvals"
+            const url = isEdit ? `/api/approvals/${activeApproval.id}` : "/api/approvals"
             const method = isEdit ? "PUT" : "POST"
 
-            // Using JSON for now as ModelAttachmentsCreator usually handles uploads separately 
-            // or returns IDs. If files need multipart, adjust here.
-            // Based on other modals, we send JSON with pending_file_ids usually, 
-            // but let's check if we need FormData for 'files'.
-            // The referenced DonationFormModal sends JSON.
-
-            // Handle New Files Upload
-            const uploadedFileIds: number[] = []
-            if (data.files && data.files.length > 0) {
-                for (const file of data.files) {
-                    const fd = new FormData()
-                    fd.append("file", file)
-                    const res = await uploadFile(fd)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    } else {
-                        toast.error(`Error al subir archivo: ${file.name}`)
-                    }
-                }
-            }
-
-            // Prepare payload
-            // Map pending_file_ids (which might be objects from Creator) to IDs if needed
-            // The state definition says number[], but the component uses objects.
-            // Let's assume they are objects { id, ... } based on ModelAttachmentsCreator usage.
-            const pendingIds = Array.isArray(data.pending_file_ids)
-                ? data.pending_file_ids.map((f: any) => f.id || f) // Handle object or primitive
-                : []
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
             const payload = {
                 ...data,
-                files: undefined, // Don't send File objects
-                pending_file_ids: [...pendingIds, ...uploadedFileIds]
+                pending_file_ids: uploadedFileIds
             }
 
             const res = await fetch(url, {
@@ -128,6 +109,9 @@ export default function ApprovalFormModal({
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["approvals"] })
+            if (activeApproval?.id) {
+                queryClient.invalidateQueries({ queryKey: ["approval", activeApproval.id] })
+            }
             toast.success(isEdit ? "Solicitud actualizada" : "Solicitud creada")
             onClose()
         },
@@ -238,27 +222,25 @@ export default function ApprovalFormModal({
                     {/* Files */}
                     <div className="space-y-2">
                         <Label>Adjuntar Archivos</Label>
-                        {isEdit ? (
-                            <div className="space-y-4">
-                                <div className="bg-yellow-50 p-3 rounded-md flex items-center gap-2 text-yellow-700 text-sm">
-                                    <AlertTriangle className="h-4 w-4" />
-                                    <span>Editar la solicitud reiniciará el proceso de aprobación.</span>
-                                </div>
-                                <ModelAttachments
-                                    modelId={initialData.id}
-                                    modelType="App\Models\Approval"
-                                    initialFiles={initialData.files || []}
-                                    onUpdate={() => queryClient.invalidateQueries({ queryKey: ["approvals"] })}
-                                />
+                        {isEdit && (
+                            <div className="bg-yellow-50 p-3 rounded-md flex items-center gap-2 text-yellow-700 text-sm mb-4">
+                                <AlertTriangle className="h-4 w-4" />
+                                <span>Editar la solicitud reiniciará el proceso de aprobación.</span>
                             </div>
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={formData.files}
-                                onFilesChange={(files) => setFormData({ ...formData, files })}
-                                pendingCloudFiles={formData.pending_file_ids as any} // Cast as any or fix type in state to match FileModel[]; component emits array of objects usually
-                                onPendingCloudFilesChange={(files) => setFormData({ ...formData, pending_file_ids: files as any })}
-                            />
                         )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="aprobaciones"
+                            modelId={activeApproval?.id}
+                            modelType="App\Models\Approval"
+                            initialFiles={activeApproval?.files || []}
+                            onUpdate={() => {
+                                if (activeApproval?.id) {
+                                    queryClient.invalidateQueries({ queryKey: ["approval", activeApproval.id] })
+                                    queryClient.invalidateQueries({ queryKey: ["approvals"] })
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter className="bg-gray-50 -mx-6 -mb-6 px-6 py-4 rounded-b-lg">

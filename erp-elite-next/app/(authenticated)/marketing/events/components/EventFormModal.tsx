@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { toast } from "sonner";
 import {
     Select,
@@ -54,6 +53,7 @@ export function EventFormModal({
     responsibleOptions,
 }: EventFormModalProps) {
     const [loading, setLoading] = useState(false);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
     const [currentEventData, setCurrentEventData] = useState(eventToEdit);
     const [formData, setFormData] = useState({
         name: "",
@@ -143,9 +143,11 @@ export function EventFormModal({
                 : "/api/marketing/events";
             const method = eventToEdit ? "PUT" : "POST";
 
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+
             const payload = {
                 ...formData,
-                pending_file_ids: pendingCloudFiles.map(f => f.id)
+                pending_file_ids: allFileIds
             };
 
             const response = await fetch(url, {
@@ -159,21 +161,6 @@ export function EventFormModal({
             if (!response.ok) throw new Error("Error saving event");
 
             const data = await response.json();
-
-            // If creating new event, handle file uploads via ModelAttachmentsCreator logic if needed,
-            // but ModelAttachmentsCreator now handles uploads and returns pending IDs.
-            // Wait, ModelAttachmentsCreator uploads to 'temp' or 'pending' state? 
-            // Actually, looking at previous implementations (e.g. AdPieceFormModal), we send pending_file_ids.
-            // The backend then links them.
-
-            // If we have local files selected in the Creator but not yet uploaded?
-            // The Creator component handles upload immediately upon selection usually?
-            // Let's assume the standard usage where Creator gives us pendingFileIds of uploaded files.
-            // Wait, Creator accepts `files` prop (File[]). It likely uploads them internally or via a separate action?
-            // Checking `ModelAttachmentsCreator` usage in `AdPieceFormModal`:
-            // <ModelAttachmentsCreator ... v-model:files="form.files" v-model:pendingFileIds="form.pending_file_ids" />
-            // In React version:
-            // <ModelAttachmentsCreator files={files} onFilesChange={setFiles} pendingCloudFiles={pendingFileIds} onPendingCloudFilesChange={setPendingFileIds} ... />
 
             toast.success(`Evento ${eventToEdit ? "actualizado" : "creado"} correctamente`);
             onSuccess();
@@ -305,21 +292,14 @@ export function EventFormModal({
 
                     <div className="border-t pt-4">
                         <Label className="block mb-2">Archivos Adjuntos</Label>
-                        {currentEventData && currentEventData.id ? (
-                            <ModelAttachments
-                                modelId={currentEventData.id}
-                                modelType="App\Models\Event"
-                                initialFiles={currentEventData.files || []}
-                                onUpdate={refreshEventData}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={setFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={currentEventData?.id}
+                            modelType="App\Models\Event"
+                            initialFiles={currentEventData?.files || []}
+                            onUpdate={refreshEventData}
+                        />
                     </div>
 
                     <div className="flex justify-end space-x-2 pt-4">

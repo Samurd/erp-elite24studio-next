@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -8,8 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 import { toast } from "sonner";
 import {
     Select,
@@ -53,6 +52,7 @@ export function EventItemFormModal({
     eventName,
 }: EventItemFormModalProps) {
     const [loading, setLoading] = useState(false);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
     const [formData, setFormData] = useState({
         description: "",
         quantity: "",
@@ -74,7 +74,6 @@ export function EventItemFormModal({
                 total_price: itemToEdit.totalPrice || 0,
             });
             setFiles([]);
-            setFiles([]);
             setPendingCloudFiles([]);
         } else {
             setFormData({
@@ -84,7 +83,6 @@ export function EventItemFormModal({
                 unit_price: 0,
                 total_price: 0,
             });
-            setFiles([]);
             setFiles([]);
             setPendingCloudFiles([]);
         }
@@ -116,9 +114,11 @@ export function EventItemFormModal({
                 : `/api/marketing/events/${eventId}/items`;
             const method = itemToEdit ? "PUT" : "POST";
 
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+
             const payload = {
                 ...formData,
-                pending_file_ids: pendingCloudFiles.map(f => f.id)
+                pending_file_ids: allFileIds
             };
 
             const response = await fetch(url, {
@@ -217,20 +217,13 @@ export function EventItemFormModal({
 
                     <div className="border-t pt-4">
                         <Label className="block mb-2">Archivos Adjuntos (Cotizaciones, Facturas, etc.)</Label>
-                        {itemToEdit ? (
-                            <ModelAttachments
-                                modelId={itemToEdit.id}
-                                modelType="App\Models\EventItem"
-                                initialFiles={itemToEdit.files || []}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={setFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="marketing"
+                            modelId={itemToEdit?.id}
+                            modelType="App\Models\EventItem"
+                            initialFiles={itemToEdit?.files || []}
+                        />
                     </div>
 
                     <div className="flex justify-end space-x-2 pt-4">

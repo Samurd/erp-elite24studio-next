@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useForm, Controller } from "react-hook-form"
+import { useState, useEffect, useRef } from "react"
+import { useForm, Controller, SubmitHandler } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -11,11 +11,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import MoneyInput from "@/components/ui/money-input"
 import MoneyDisplay from "@/components/ui/money-display"
-import ModelAttachmentsCreator, { PendingFile } from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RichSelect } from "@/components/ui/rich-select"
-import { DateService } from "@/lib/date-service"
 
 interface PayrollsFormModalProps {
     open: boolean
@@ -35,17 +34,14 @@ const payrollSchema = z.object({
     observations: z.string().optional(),
 })
 
-type PayrollFormValues = z.infer<typeof payrollSchema>
+type PayrollFormValues = z.input<typeof payrollSchema>
 
 export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuccess }: PayrollsFormModalProps) {
     const [employees, setEmployees] = useState<any[]>([])
     const [statusOptions, setStatusOptions] = useState<any[]>([])
     const [loadingOptions, setLoadingOptions] = useState(false)
     const [saving, setSaving] = useState(false)
-
-    // Split file states
-    const [newFiles, setNewFiles] = useState<File[]>([])
-    const [cloudFiles, setCloudFiles] = useState<PendingFile[]>([])
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     const [detailData, setDetailData] = useState<any>(null) // For view/edit full fetch
 
@@ -90,8 +86,6 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                     status_id: "",
                     observations: "",
                 })
-                setNewFiles([])
-                setCloudFiles([])
                 setDetailData(null)
             }
         }
@@ -135,37 +129,15 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
         }
     }
 
-    const onSubmit = async (data: PayrollFormValues) => {
+    const onSubmit: SubmitHandler<PayrollFormValues> = async (data) => {
         setSaving(true)
         try {
-            // 1. Upload new files
-            const uploadedIds: number[] = []
-            if (newFiles.length > 0) {
-                const { uploadFile } = await import("@/actions/files") // Dynamic import to avoid server action issues if any
-
-                for (const file of newFiles) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res && res.success && res.file) {
-                        uploadedIds.push(res.file.id)
-                    } else {
-                        toast.error(`Error al subir archivo: ${file.name}`)
-                        setSaving(false)
-                        return // Stop submission
-                    }
-                }
-            }
-
-            // 2. Combine IDs
-            const allPendingIds = [
-                ...cloudFiles.map(f => f.id),
-                ...uploadedIds
-            ]
+            // Upload new files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
 
             const payload = {
                 ...data,
-                pending_file_ids: allPendingIds
+                pending_file_ids: uploadedFileIds
             }
 
             const url = mode === 'create'
@@ -196,9 +168,10 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
         }
     }
 
-
-
     const isView = mode === 'view'
+    // Use detailData if available (for edit/view), otherwise initialData (which might be partial), or empty for create
+    const effectiveFiles = detailData?.files || initialData?.files || []
+    const effectiveModelId = initialData?.id
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -267,7 +240,7 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                         <div className="space-y-2">
                             <Label>Subtotal</Label>
                             <MoneyInput
-                                value={watch("subtotal")}
+                                value={Number(watch("subtotal") || 0)}
                                 onChange={(val) => setValue("subtotal", val)}
                                 disabled={isView}
                             />
@@ -277,7 +250,7 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                         <div className="space-y-2">
                             <Label>Bonos</Label>
                             <MoneyInput
-                                value={watch("bonos")}
+                                value={Number(watch("bonos") || 0)}
                                 onChange={(val) => setValue("bonos", val)}
                                 disabled={isView}
                             />
@@ -287,7 +260,7 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                         <div className="space-y-2">
                             <Label>Deducciones</Label>
                             <MoneyInput
-                                value={watch("deductions")}
+                                value={Number(watch("deductions") || 0)}
                                 onChange={(val) => setValue("deductions", val)}
                                 disabled={isView}
                             />
@@ -297,7 +270,7 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                         <div className="space-y-2">
                             <Label>Total Neto</Label>
                             <div className="p-2 border rounded-md bg-gray-50 font-bold text-lg text-right">
-                                <MoneyDisplay value={watch("total")} />
+                                <MoneyDisplay value={Number(watch("total") || 0)} />
                             </div>
                         </div>
                     </div>
@@ -317,28 +290,15 @@ export function PayrollsFormModal({ open, onOpenChange, mode, initialData, onSuc
                     {/* Files */}
                     <div className="border-t pt-4">
                         <Label className="text-lg font-semibold mb-2 block">Archivos Adjuntos</Label>
-
-                        {/* Edit/View Mode: Existing Files */}
-                        {/* Edit/View Mode: Use ModelAttachments for live management */}
-                        {(mode === 'edit' || mode === 'view') && initialData?.id && (
-                            <div className="mb-4">
-                                <ModelAttachments
-                                    modelId={initialData.id}
-                                    modelType="App\Models\Payroll"
-                                    initialFiles={detailData?.files || []}
-                                />
-                            </div>
-                        )}
-
-                        {/* Create Mode ONLY: Add New Files using Creator */}
-                        {mode === 'create' && (
-                            <ModelAttachmentsCreator
-                                files={newFiles}
-                                onFilesChange={setNewFiles}
-                                pendingCloudFiles={cloudFiles}
-                                onPendingCloudFilesChange={setCloudFiles}
+                        <div className="mb-4">
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="finanzas"
+                                modelId={effectiveModelId}
+                                modelType="App\Models\Payroll"
+                                initialFiles={effectiveFiles}
                             />
-                        )}
+                        </div>
                     </div>
 
                     <DialogFooter>

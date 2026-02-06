@@ -56,7 +56,6 @@ export default function QuotesTable({ data, onView, onEdit, onDelete }: QuotesTa
                         <TableHead>Fecha Emisión</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead>Total</TableHead>
-                        <TableHead>Archivos</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -89,16 +88,6 @@ export default function QuotesTable({ data, onView, onEdit, onDelete }: QuotesTa
                                     <div className="flex items-center gap-1 font-medium">
                                         <MoneyDisplay value={Number(quote.total) * 100} />
                                     </div>
-                                </TableCell>
-                                <TableCell>
-                                    {quote.files_count > 0 ? (
-                                        <Badge variant="outline" className="flex items-center w-fit gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100">
-                                            <Paperclip className="w-3 h-3" />
-                                            {quote.files_count}
-                                        </Badge>
-                                    ) : (
-                                        <span className="text-gray-400 text-xs">-</span>
-                                    )}
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">

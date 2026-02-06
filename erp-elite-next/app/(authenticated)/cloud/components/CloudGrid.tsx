@@ -4,10 +4,11 @@ import { Folder, File, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateService } from '@/lib/date-service';
-import { CloudData, CloudItem } from './types';
+import { CloudData, CloudItem, CloudFolder, CloudFile } from './types';
 
 interface CloudGridProps {
-    data: CloudData | undefined;
+    folders: CloudFolder[];
+    files: CloudFile[];
     renamingItem: CloudItem | null;
     onRenameChange: (name: string) => void;
     onRenameSubmit: () => void;
@@ -18,7 +19,8 @@ interface CloudGridProps {
 }
 
 export default function CloudGrid({
-    data,
+    folders,
+    files,
     renamingItem,
     onRenameChange,
     onRenameSubmit,
@@ -37,7 +39,7 @@ export default function CloudGrid({
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {/* Folders */}
-            {data?.folders.map((folder) => (
+            {folders.map((folder) => (
                 <div
                     key={`folder-${folder.id}`}
                     onClick={() => onOpenFolder(folder.id)}
@@ -89,7 +91,7 @@ export default function CloudGrid({
             ))}
 
             {/* Files */}
-            {data?.files.map((file) => (
+            {files.map((file) => (
                 <div
                     key={`file-${file.id}`}
                     onClick={() => onDownloadFile(file)}

@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -34,8 +33,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { RichSelect } from "@/components/ui/rich-select";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 
 const punchItemSchema = z.object({
     observations: z.string().min(1, "Las observaciones son requeridas"),
@@ -58,8 +56,7 @@ export function PunchItemFormModal({
 }: PunchItemFormModalProps) {
     const isEditing = !!punchItem;
     const queryClient = useQueryClient();
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     // Fetch full punch item details including files
     const { data: fetchedPunchItem, isLoading } = useQuery({
@@ -105,8 +102,7 @@ export function PunchItemFormModal({
 
     useEffect(() => {
         if (!isOpen) {
-            setFiles([]);
-            setPendingCloudFiles([]);
+            // Reset logic if needed
         }
     }, [isOpen]);
 
@@ -124,23 +120,7 @@ export function PunchItemFormModal({
     // Mutations
     const createMutation = useMutation({
         mutationFn: async (values: z.infer<typeof punchItemSchema>) => {
-            const uploadedFileIds: number[] = [];
-            const { uploadFile } = await import("@/actions/files");
-
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id);
-            const allFileIds = [...uploadedFileIds, ...pendingIds];
-
+            const allFileIds = await attachmentsRef.current?.upload() || [];
             const payload = { ...values, pending_file_ids: allFileIds };
 
             const res = await fetch(`/api/worksites/${worksiteId}/punch-items`, {
@@ -161,10 +141,13 @@ export function PunchItemFormModal({
 
     const updateMutation = useMutation({
         mutationFn: async (values: z.infer<typeof punchItemSchema>) => {
+            const allFileIds = await attachmentsRef.current?.upload() || [];
+            const payload = { ...values, pending_file_ids: allFileIds };
+
             const res = await fetch(`/api/worksites/${worksiteId}/punch-items/${punchItem.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error("Failed to update punch item");
             return res.json();
@@ -269,26 +252,19 @@ export function PunchItemFormModal({
                             {/* Attachments */}
                             <div className="md:col-span-2 space-y-2">
                                 <FormLabel className="mb-2 block">Archivos Adjuntos</FormLabel>
-                                {isEditing ? (
-                                    activePunchItem && (
-                                        <ModelAttachments
-                                            initialFiles={activePunchItem.files || []}
-                                            modelId={activePunchItem.id}
-                                            modelType="App\Models\PunchItem"
-                                            onUpdate={() => {
-                                                queryClient.invalidateQueries({ queryKey: ["worksite-punch-item", activePunchItem.id] });
-                                                queryClient.invalidateQueries({ queryKey: ["worksite-punch-items", worksiteId] });
-                                            }}
-                                        />
-                                    )
-                                ) : (
-                                    <ModelAttachmentsCreator
-                                        files={files}
-                                        onFilesChange={setFiles}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={setPendingCloudFiles}
-                                    />
-                                )}
+                                <ModelAttachments
+                                    ref={attachmentsRef}
+                                    areaSlug="obras"
+                                    initialFiles={activePunchItem?.files || []}
+                                    modelId={activePunchItem?.id}
+                                    modelType="App\Models\PunchItem"
+                                    onUpdate={() => {
+                                        if (activePunchItem?.id) {
+                                            queryClient.invalidateQueries({ queryKey: ["worksite-punch-item", activePunchItem.id] });
+                                            queryClient.invalidateQueries({ queryKey: ["worksite-punch-items", worksiteId] });
+                                        }
+                                    }}
+                                />
                             </div>
 
                         </div>

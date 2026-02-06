@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     if (typeId) conditions.push(eq(alliances.typeId, parseInt(typeId)));
 
     if (certified !== null && certified !== undefined && certified !== '') {
-        conditions.push(eq(alliances.certified, parseInt(certified)));
+        conditions.push(eq(alliances.certified, parseInt(certified) === 1));
     }
 
     if (dateFrom) {
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
             typeId: body.type_id ? parseInt(body.type_id) : null,
             startDate: body.start_date,
             validity: body.validity ? parseInt(body.validity) : null,
-            certified: body.certified ? 1 : 0,
+            certified: !!body.certified,
         }).returning({
             id: alliances.id,
         });

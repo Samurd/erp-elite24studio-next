@@ -1,17 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Download, FileIcon } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import { uploadFile, attachFileToModel } from "@/actions/files"
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
+import { useQuery, useQueryClient } from "@tanstack/react-query" // Added useQuery import
 
 interface NormsFormModalProps {
     isOpen: boolean
@@ -22,11 +22,24 @@ interface NormsFormModalProps {
 
 export function NormsFormModal({ isOpen, onClose, initialData, mode }: NormsFormModalProps) {
     const router = useRouter()
-    const [isLoading, setIsLoading] = useState(false)
+    const queryClient = useQueryClient()
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
-    // States for ModelAttachmentsCreator (Create Mode)
-    const [newFiles, setNewFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
+    // Fetch full data using useQuery
+    const { data: fetchedData, isLoading: isLoadingQuery, refetch } = useQuery({
+        queryKey: ["norm", initialData?.id],
+        queryFn: async () => {
+            if (!initialData?.id) return null;
+            const res = await fetch(`/api/finances/norms/${initialData.id}`);
+            if (!res.ok) throw new Error("Failed to fetch norm");
+            return res.json();
+        },
+        enabled: isOpen && !!initialData?.id && (mode === 'edit' || mode === 'view'),
+        initialData: initialData
+    });
+
+    const activeData = fetchedData || initialData;
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm({
         defaultValues: {
@@ -36,71 +49,56 @@ export function NormsFormModal({ isOpen, onClose, initialData, mode }: NormsForm
 
     useEffect(() => {
         if (isOpen) {
-            if (initialData && (mode === 'edit' || mode === 'view')) {
+            if (activeData && (mode === 'edit' || mode === 'view')) {
                 reset({
-                    name: initialData.name,
+                    name: activeData.name || activeData.title || "",
                 })
             } else {
                 reset({
                     name: "",
                 })
-                setNewFiles([])
-                setPendingCloudFiles([])
             }
         }
-    }, [isOpen, initialData, mode, reset])
+    }, [isOpen, activeData, mode, reset])
 
     const onSubmit = async (data: any) => {
         if (mode === 'view') return;
 
-        setIsLoading(true)
+        setIsSubmitting(true)
         try {
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || []
+
+            const payload = {
+                ...data,
+                pending_file_ids: uploadedFileIds
+            }
+
             if (mode === 'create') {
-                // 1. Create Norm
                 const res = await fetch("/api/finances/norms", {
                     method: "POST",
-                    body: JSON.stringify(data),
+                    body: JSON.stringify(payload),
                     headers: { "Content-Type": "application/json" }
                 })
 
                 if (!res.ok) throw new Error("Error al crear norma")
-                const newNorm = await res.json()
-                const normId = newNorm.id
-
-                // 2. Handle New Files (Upload & Attach)
-                for (const file of newFiles) {
-                    const formData = new FormData()
-                    formData.append("file", file)
-                    // formData.append("userId", ...) // Optional, handled by session in action if updated, or passed explicit. Action uses session user? 
-                    // Checking actions/files.ts -> It uses formData userId/folderId or null. Drizzle insert uses provided. 
-                    // Ideally we should pass userId if we can, but let's assume null is fine or updated action logic.
-                    // IMPORTANT: uploadFile in action assumes NO session check inside it, just raw upload? 
-                    // Yes, it does not check session. We should be careful.
-
-                    const uploadRes = await uploadFile(formData)
-                    if (uploadRes.success && uploadRes.file) {
-                        await attachFileToModel(uploadRes.file.id, "App\\Models\\Norm", normId)
-                    }
-                }
-
-                // 3. Handle Cloud Files (Attach)
-                for (const cloudFile of pendingCloudFiles) {
-                    await attachFileToModel(cloudFile.id, "App\\Models\\Norm", normId)
-                }
 
                 toast.success("Norma creada exitosamente")
 
             } else if (mode === 'edit') {
-                // Update Norm Details
-                const res = await fetch(`/api/finances/norms/${initialData.id}`, {
+                const res = await fetch(`/api/finances/norms/${activeData.id}`, {
                     method: "PUT",
-                    body: JSON.stringify(data),
+                    body: JSON.stringify(payload),
                     headers: { "Content-Type": "application/json" }
                 })
                 if (!res.ok) throw new Error("Error al actualizar norma")
 
                 toast.success("Norma actualizada exitosamente")
-                // Files are handled separately by ModelAttachments component in Edit mode
+            }
+
+            queryClient.invalidateQueries({ queryKey: ["norms"] })
+            if (activeData?.id) {
+                queryClient.invalidateQueries({ queryKey: ["norm", activeData.id] })
             }
 
             router.refresh()
@@ -110,7 +108,7 @@ export function NormsFormModal({ isOpen, onClose, initialData, mode }: NormsForm
             console.error(error)
             toast.error("Ocurrió un error")
         } finally {
-            setIsLoading(false)
+            setIsSubmitting(false)
         }
     }
 
@@ -123,7 +121,7 @@ export function NormsFormModal({ isOpen, onClose, initialData, mode }: NormsForm
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>
-                        {mode === 'view' ? `Información detallada de la norma #${initialData?.id}` : 'Complete los campos para guardar la norma.'}
+                        {mode === 'view' ? `Información detallada de la norma #${activeData?.id}` : 'Complete los campos para guardar la norma.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -142,65 +140,23 @@ export function NormsFormModal({ isOpen, onClose, initialData, mode }: NormsForm
 
                     <div className="border-t pt-4">
                         <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-
-                        {mode === 'create' && (
-                            <ModelAttachmentsCreator
-                                files={newFiles}
-                                onFilesChange={setNewFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
-
-                        {mode === 'edit' && initialData && (
-                            <ModelAttachments
-                                initialFiles={initialData.files || []}
-                                modelId={initialData.id}
-                                modelType="App\Models\Norm"
-                            />
-                        )}
-
-                        {mode === 'view' && initialData && (
-                            <div className="space-y-2">
-                                {(initialData.files && initialData.files.length > 0) ? (
-                                    initialData.files.map((file: any) => (
-                                        <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border hover:shadow-sm">
-                                            <div className="flex items-center space-x-3 overflow-hidden">
-                                                <div className="text-gray-400">
-                                                    <FileIcon className="w-6 h-6" />
-                                                </div>
-                                                <div className="truncate">
-                                                    <span className="text-sm font-medium text-gray-700 truncate block">
-                                                        {file.name}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <a
-                                                href={file.url}
-                                                download
-                                                target="_blank"
-                                                className="text-white bg-blue-600 hover:bg-blue-700 p-2 rounded-lg text-xs font-medium flex items-center transition"
-                                            >
-                                                <Download className="w-4 h-4 mr-1" /> Descargar
-                                            </a>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="text-center text-gray-400 py-4 italic border border-dashed border-gray-200 rounded">
-                                        No hay archivos adjuntos.
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="finanzas"
+                            initialFiles={activeData?.files || []}
+                            modelId={activeData?.id}
+                            modelType="App\Models\Norm"
+                            onUpdate={() => refetch()}
+                        />
                     </div>
 
                     {!isReadOnly && (
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+                            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" className="bg-yellow-600 hover:bg-yellow-700 text-white" disabled={isLoading}>
-                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <Button type="submit" className="bg-yellow-600 hover:bg-yellow-700 text-white" disabled={isSubmitting}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 {mode === 'create' ? 'Crear' : 'Actualizar'}
                             </Button>
                         </DialogFooter>

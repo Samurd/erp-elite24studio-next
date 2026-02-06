@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { useForm, Controller } from "react-hook-form"
 import { Calendar, DollarSign, User, FileText } from "lucide-react"
 import MoneyInput from "@/components/ui/money-input"
@@ -37,14 +36,11 @@ export default function QuoteFormModal({
     const isView = mode === "view"
     const isEdit = mode === "edit" || mode === "view"
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Use a stable reference for files. 
-    // If initialQuote.files exists, we assume it comes from React Query and is stable enough *or* we iterate to check.
-    // However, if it's undefined/null, we MUST use a truly stable empty array global reference.
     const filesData = initialQuote?.files || EMPTY_FILES
 
-    // Memoize using JSON.stringify to ensure we only update if the actual CONTENTS change, 
-    // strictly avoiding referential instability loops.
     const memoizedInitialQuoteFiles = useMemo(() => {
         return filesData
     }, [JSON.stringify(filesData)])
@@ -57,9 +53,6 @@ export default function QuoteFormModal({
             total: 0,
         }
     })
-
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
 
     // Fetch full quote details including files when in edit/view mode
     const { data: quoteDetails } = useQuery({
@@ -91,8 +84,6 @@ export default function QuoteFormModal({
                     status_id: "",
                     total: 0,
                 })
-                setFiles([])
-                setPendingCloudFiles([])
             }
         }
     }, [open, effectiveQuote, reset, setValue])
@@ -100,22 +91,7 @@ export default function QuoteFormModal({
     const createMutation = useMutation({
         mutationFn: async (data: any) => {
             // Upload files logic
-            const uploadedFileIds = []
-            // Dynamic import to avoid server/client issues if any
-            const { uploadFile } = await import("@/actions/files")
-
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
+            const allFileIds = await attachmentsRef.current?.upload() || []
 
             // Convert cents back to standard unit
             const payload = {
@@ -268,25 +244,20 @@ export default function QuoteFormModal({
                     {/* Attachments Section */}
                     <div className="border-t pt-4">
                         <Label className="text-base font-semibold mb-4 block">Archivos Adjuntos</Label>
-
-                        {isEdit && initialQuote ? (
-                            <ModelAttachments
-                                modelId={effectiveQuote.id}
-                                modelType="App\Models\Quote"
-                                initialFiles={effectiveQuote.files || []}
-                                onUpdate={() => {
+                        <ModelAttachments
+                            ref={attachmentsRef}
+                            areaSlug="cotizaciones"
+                            modelId={effectiveQuote?.id}
+                            modelType="App\Models\Quote"
+                            initialFiles={effectiveQuote?.files || []}
+                            readOnly={isView}
+                            onUpdate={() => {
+                                if (effectiveQuote?.id) {
                                     queryClient.invalidateQueries({ queryKey: ["quote", effectiveQuote.id] })
                                     queryClient.invalidateQueries({ queryKey: ["quotes"] })
-                                }}
-                            />
-                        ) : (
-                            <ModelAttachmentsCreator
-                                files={files}
-                                onFilesChange={setFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        )}
+                                }
+                            }}
+                        />
                     </div>
 
                     <DialogFooter>

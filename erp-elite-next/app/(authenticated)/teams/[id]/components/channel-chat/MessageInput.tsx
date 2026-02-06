@@ -4,7 +4,7 @@ import { Paperclip, Smile, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
-import ModelAttachmentsCreator from '@/components/cloud/ModelAttachmentsCreator';
+import ModelAttachments, { ModelAttachmentsRef } from '@/components/cloud/ModelAttachments';
 import { RichTextEditor } from '@/components/ui/rich-editor';
 
 interface MessageInputProps {
@@ -13,10 +13,6 @@ interface MessageInputProps {
     handleSend: (e?: React.FormEvent) => void;
     handleEditorChange: (html: string) => void;
     isSending: boolean;
-    attachedFiles: File[];
-    setAttachedFiles: React.Dispatch<React.SetStateAction<File[]>>;
-    pendingCloudFiles: any[];
-    setPendingCloudFiles: React.Dispatch<React.SetStateAction<any[]>>;
     replyingTo: any | null;
     setReplyingTo: (msg: any | null) => void;
     channelName: string;
@@ -24,6 +20,9 @@ interface MessageInputProps {
     setShowAttachments: (show: boolean) => void;
     showEmojiPicker: boolean;
     setShowEmojiPicker: (show: boolean) => void;
+    attachmentsRef: React.RefObject<ModelAttachmentsRef | null>;
+    onFileCountChange: (count: number) => void;
+    fileCount: number;
 }
 
 export default function MessageInput({
@@ -32,17 +31,16 @@ export default function MessageInput({
     handleSend,
     handleEditorChange,
     isSending,
-    attachedFiles,
-    setAttachedFiles,
-    pendingCloudFiles,
-    setPendingCloudFiles,
     replyingTo,
     setReplyingTo,
     channelName,
     showAttachments,
     setShowAttachments,
     showEmojiPicker,
-    setShowEmojiPicker
+    setShowEmojiPicker,
+    attachmentsRef,
+    onFileCountChange,
+    fileCount
 }: MessageInputProps) {
     return (
         <div className="p-4 border-t border-gray-200 bg-gray-50">
@@ -60,40 +58,38 @@ export default function MessageInput({
             )}
 
             {/* File Previews */}
-            {(attachedFiles.length > 0 || pendingCloudFiles.length > 0) && (
-                <div className="bg-white border border-gray-200 p-2 mb-2 rounded flex flex-wrap gap-2 text-xs">
-                    {attachedFiles.map((f, i) => (
-                        <div key={i} className="bg-gray-100 px-2 py-1 rounded flex items-center gap-2">
-                            {f.name} <X className="h-3 w-3 cursor-pointer" onClick={() => setAttachedFiles(p => p.filter((_, idx) => idx !== i))} />
-                        </div>
-                    ))}
-                    {pendingCloudFiles.map((f, i) => (
-                        <div key={f.id} className="bg-blue-50 px-2 py-1 rounded flex items-center gap-2 text-blue-700">
-                            {f.name} <X className="h-3 w-3 cursor-pointer" onClick={() => setPendingCloudFiles(p => p.filter(x => x.id !== f.id))} />
-                        </div>
-                    ))}
-                </div>
-            )}
+            {/* File Previews removed, handled by ModelAttachments in Popover */}
 
+
+            {/* Persistent Attachment Area */}
+            <div className="mb-2 border rounded-lg overflow-hidden bg-white shadow-sm transition-all duration-200" style={{ display: showAttachments ? 'block' : 'none' }}>
+                <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
+                    <ModelAttachments
+                        ref={attachmentsRef}
+                        modelType="App\Models\Message"
+                        areaSlug="teams"
+                        onSelectionChange={onFileCountChange}
+                        compact={true}
+                    />
+                </div>
+            </div>
 
             <form onSubmit={handleSend} className="flex gap-2 items-end">
-                <Popover open={showAttachments} onOpenChange={setShowAttachments}>
-                    <PopoverTrigger asChild>
-                        <Button type="button" size="icon" variant="ghost" className="text-gray-500 hover:bg-gray-200">
-                            <Paperclip className="h-5 w-5" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[500px] p-0" align="start" side="top">
-                        <div className="p-4">
-                            <ModelAttachmentsCreator
-                                files={attachedFiles}
-                                onFilesChange={setAttachedFiles}
-                                pendingCloudFiles={pendingCloudFiles}
-                                onPendingCloudFilesChange={setPendingCloudFiles}
-                            />
-                        </div>
-                    </PopoverContent>
-                </Popover>
+                <Button
+                    type="button"
+                    size="icon"
+                    variant={showAttachments || fileCount > 0 ? "secondary" : "ghost"}
+                    className="text-gray-500 hover:bg-gray-200 relative shrink-0"
+                    onClick={() => setShowAttachments(!showAttachments)}
+                    title="Adjuntar archivos"
+                >
+                    <Paperclip className="h-5 w-5" />
+                    {fileCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+                            {fileCount}
+                        </span>
+                    )}
+                </Button>
 
                 <div className="flex-1 relative">
                     <RichTextEditor
@@ -124,10 +120,10 @@ export default function MessageInput({
                     </div>
                 </div>
 
-                <Button type="submit" disabled={isSending || (!content.trim() && attachedFiles.length === 0 && pendingCloudFiles.length === 0)} className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Button type="submit" disabled={isSending || (!content.trim() && fileCount === 0)} className="bg-blue-600 hover:bg-blue-700 text-white">
                     <Send className="h-4 w-4" />
                 </Button>
             </form>
-        </div>
+        </div >
     );
 }

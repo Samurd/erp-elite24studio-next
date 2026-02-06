@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -35,8 +35,8 @@ import { RichSelect } from "@/components/ui/rich-select";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator";
-import ModelAttachments from "@/components/cloud/ModelAttachments";
+// Removed ModelAttachmentsCreator import
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments";
 
 const formSchema = z.object({
     employee_id: z.string().min(1, "El empleado es requerido"),
@@ -59,8 +59,7 @@ export function HolidayFormModal({
     holiday,
 }: HolidayFormModalProps) {
     const queryClient = useQueryClient();
-    const [files, setFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -89,9 +88,6 @@ export function HolidayFormModal({
     // Reset form when opening/changing holiday or when full details load
     useEffect(() => {
         if (open) {
-            setFiles([]);
-            setPendingCloudFiles([]);
-
             if (holiday) {
                 // Use fullHoliday if available, otherwise fallback to basic holiday prop (though fullHoliday is preferred for files)
                 const dataToUse = fullHoliday || holiday;
@@ -121,11 +117,6 @@ export function HolidayFormModal({
     const { data: options } = useQuery({
         queryKey: ["rrhh-options-form"],
         queryFn: async () => {
-            // We need employees and users additionally, so separate calls or modify api.
-            // Given the options API returns everything based on includes, we can try to fetch them.
-            // But usually options API requires specific flags.
-            // Let's assume standard options return some and we might need to add specific logic for employees if the dropdown is huge, but usually loaded.
-            // Based on API: 'include=employees' and 'include=users' works.
             const res = await fetch("/api/rrhh/options?slug=tipo_vacacion&include=employees&include2=users");
             return res.json();
         },
@@ -138,29 +129,15 @@ export function HolidayFormModal({
             const url = holiday ? `/api/rrhh/holidays/${holiday.id}` : "/api/rrhh/holidays";
             const method = holiday ? "PUT" : "POST";
 
-            // Upload files first if any (for new creation with files)
-            const uploadedFileIds: number[] = [];
-            if (files.length > 0) {
-                const { uploadFile } = await import("@/actions/files");
-                for (const file of files) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id);
-            const allPendingIds = [...uploadedFileIds, ...pendingIds];
+            // Upload files via ref
+            const uploadedFileIds = await attachmentsRef.current?.upload() || [];
 
             const res = await fetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...values,
-                    pending_file_ids: allPendingIds
+                    pending_file_ids: uploadedFileIds
                 }),
             });
 
@@ -224,7 +201,7 @@ export function HolidayFormModal({
                                                 value={field.value}
                                                 onValueChange={field.onChange}
                                                 placeholder="Seleccionar empleado"
-                                                imageKey="profile_photo_url" // Assuming this exists or falls back
+                                                imageKey="profile_photo_url"
                                             />
                                         </FormControl>
                                         <FormMessage />
@@ -337,23 +314,16 @@ export function HolidayFormModal({
                             {/* Files Section */}
                             <div className="md:col-span-2 mt-4">
                                 <FormLabel className="mb-2 block text-lg font-semibold border-b pb-2">Soportes / Archivos Adjuntos</FormLabel>
-                                {holiday ? (
-                                    <ModelAttachments
-                                        initialFiles={fullHoliday?.files || []}
-                                        modelId={holiday.id}
-                                        modelType="App\Models\Holiday"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["holidays"] });
-                                        }}
-                                    />
-                                ) : (
-                                    <ModelAttachmentsCreator
-                                        files={files}
-                                        onFilesChange={setFiles}
-                                        pendingCloudFiles={pendingCloudFiles}
-                                        onPendingCloudFilesChange={setPendingCloudFiles}
-                                    />
-                                )}
+                                <ModelAttachments
+                                    ref={attachmentsRef}
+                                    areaSlug="rrhh"
+                                    initialFiles={fullHoliday?.files || []}
+                                    modelId={holiday?.id}
+                                    modelType="App\Models\Holiday"
+                                    onUpdate={() => {
+                                        queryClient.invalidateQueries({ queryKey: ["holidays"] });
+                                    }}
+                                />
                             </div>
 
                         </div>

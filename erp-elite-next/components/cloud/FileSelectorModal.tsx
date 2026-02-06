@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Folder, File as FileIcon, Home, Loader2, ArrowLeft, Cloud } from 'lucide-react';
-import { getCloudData } from '@/actions/files';
-import { attachFileToModel } from '@/actions/files';
+import { Folder, File as FileIcon, Home, Loader2, Cloud, ChevronRight } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getCloudData, attachFileToModel } from '@/actions/files';
 
 interface FolderModel {
     id: number;
@@ -28,7 +28,7 @@ interface FileSelectorModalProps {
     // Context
     modelType?: string;
     modelId?: number;
-    areaId?: number;
+    areaSlug?: string;
     // Callbacks
     onFileSelected?: (file: FileModel) => void;
     onFileLinked?: (file?: FileModel) => void;
@@ -39,48 +39,44 @@ export default function FileSelectorModal({
     onClose,
     modelType,
     modelId,
-    areaId,
+    areaSlug,
     onFileSelected,
     onFileLinked
 }: FileSelectorModalProps) {
-    const [isLoading, setIsLoading] = useState(false);
-    const [allFolders, setAllFolders] = useState<FolderModel[]>([]);
-    const [allFiles, setAllFiles] = useState<FileModel[]>([]);
     const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
     const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
 
-    // Initial load
-    useEffect(() => {
-        if (isOpen && allFolders.length === 0 && allFiles.length === 0) {
-            loadData();
-        }
+    // Fetch cloud data using TanStack Query
+    const { data, isLoading, refetch } = useQuery({
+        queryKey: ['cloud-selector'],
+        queryFn: async () => {
+            return await getCloudData();
+        },
+        enabled: isOpen, // Only fetch when modal is open
+        staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    });
+
+    const allFolders = data?.folders || [];
+    const allFiles = data?.files || [];
+
+    // Reset state when modal closes
+    React.useEffect(() => {
         if (!isOpen) {
-            // Reset state when closed? Vue implementation keeps cache.
-            // We can keep it or reset selection
             setSelectedFileId(null);
             setCurrentFolderId(null);
         }
     }, [isOpen]);
 
-    const loadData = async () => {
-        setIsLoading(true);
-        try {
-            const data = await getCloudData();
-            setAllFolders(data.folders);
-            setAllFiles(data.files);
-        } catch (error) {
-            console.error("Error loading cloud data", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const currentFolders = useMemo(() => {
-        return allFolders.filter(f => f.parent_id === currentFolderId || (!currentFolderId && !f.parent_id));
+        return allFolders.filter(f =>
+            currentFolderId ? f.parent_id === currentFolderId : !f.parent_id
+        );
     }, [allFolders, currentFolderId]);
 
     const currentFiles = useMemo(() => {
-        return allFiles.filter(f => f.folder_id === currentFolderId || (!currentFolderId && !f.folder_id));
+        return allFiles.filter(f =>
+            currentFolderId ? f.folder_id === currentFolderId : !f.folder_id
+        );
     }, [allFiles, currentFolderId]);
 
     const breadcrumbs = useMemo(() => {
@@ -100,6 +96,16 @@ export default function FileSelectorModal({
         return crumbs;
     }, [allFolders, currentFolderId]);
 
+    // Attach file mutation
+    const attachMutation = useMutation({
+        mutationFn: async (fileId: number) => {
+            if (modelType && modelId) {
+                return await attachFileToModel(fileId, modelType, modelId, undefined, areaSlug);
+            }
+            return { success: true };
+        }
+    });
+
     const handleConfirm = async () => {
         if (!selectedFileId) return;
         const file = allFiles.find(f => f.id === selectedFileId);
@@ -114,11 +120,8 @@ export default function FileSelectorModal({
 
         // Mode 2: Link to existing model
         if (modelType && modelId) {
-            setIsLoading(true);
-            const result = await attachFileToModel(file.id, modelType, modelId, areaId);
-            setIsLoading(false);
+            const result = await attachMutation.mutateAsync(file.id);
             if (result.success) {
-                // Pass the file info to the callback
                 if (onFileLinked) onFileLinked(file);
                 onClose();
             } else {
@@ -127,23 +130,35 @@ export default function FileSelectorModal({
         }
     };
 
+    const isSubmitting = attachMutation.isPending;
+
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
                 <DialogHeader>
-                    <DialogTitle>Seleccionar Archivo de Cloud</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Cloud className="w-5 h-5 text-blue-500" />
+                        Seleccionar Archivo de Cloud
+                    </DialogTitle>
                 </DialogHeader>
 
-                <div className="h-96 flex flex-col">
+                <div className="flex-1 flex flex-col min-h-0">
                     {/* Breadcrumbs */}
-                    <div className="flex items-center text-sm text-gray-500 mb-4 bg-gray-50 p-2 rounded">
-                        <button onClick={() => setCurrentFolderId(null)} className="hover:text-blue-600 hover:underline flex items-center">
-                            <Home className="w-4 h-4 mr-1" /> Inicio
+                    <div className="flex items-center text-sm text-gray-600 mb-4 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                        <button
+                            onClick={() => setCurrentFolderId(null)}
+                            className={`hover:text-blue-600 flex items-center transition-colors ${!currentFolderId ? 'text-blue-600 font-medium' : ''}`}
+                        >
+                            <Home className="w-4 h-4 mr-1.5" />
+                            Mi Cloud
                         </button>
                         {breadcrumbs.map(crumb => (
                             <React.Fragment key={crumb.id}>
-                                <span className="mx-2">/</span>
-                                <button onClick={() => setCurrentFolderId(crumb.id)} className="hover:text-blue-600 hover:underline">
+                                <ChevronRight className="w-4 h-4 mx-1.5 text-gray-400" />
+                                <button
+                                    onClick={() => setCurrentFolderId(crumb.id)}
+                                    className={`hover:text-blue-600 transition-colors truncate max-w-[120px] ${crumb.id === currentFolderId ? 'text-blue-600 font-medium' : ''}`}
+                                >
                                     {crumb.name}
                                 </button>
                             </React.Fragment>
@@ -151,25 +166,28 @@ export default function FileSelectorModal({
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 overflow-y-auto border rounded-md p-2 relative">
+                    <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg p-3 relative min-h-[300px]">
                         {isLoading && (
-                            <div className="absolute inset-0 bg-white/80 flex justify-center items-center z-10">
-                                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                            <div className="absolute inset-0 bg-white/90 flex justify-center items-center z-10 rounded-lg">
+                                <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                                    <span className="text-sm text-gray-500">Cargando archivos...</span>
+                                </div>
                             </div>
                         )}
 
                         {/* Folders */}
                         {currentFolders.length > 0 && (
                             <div className="mb-4">
-                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Carpetas</h4>
+                                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Carpetas</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                     {currentFolders.map(folder => (
                                         <div key={folder.id}
                                             onClick={() => setCurrentFolderId(folder.id)}
-                                            className="cursor-pointer p-3 bg-yellow-50 rounded border border-yellow-100 hover:bg-yellow-100 flex items-center transition"
+                                            className="cursor-pointer p-3 bg-amber-50 rounded-lg border border-amber-100 hover:bg-amber-100 hover:border-amber-200 flex items-center transition-all group"
                                         >
-                                            <Folder className="w-4 h-4 text-yellow-500 mr-2 flex-shrink-0" />
-                                            <span className="truncate text-sm text-gray-700">{folder.name}</span>
+                                            <Folder className="w-5 h-5 text-amber-500 mr-2.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                            <span className="truncate text-sm text-gray-700 font-medium">{folder.name}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -179,23 +197,25 @@ export default function FileSelectorModal({
                         {/* Files */}
                         {currentFiles.length > 0 && (
                             <div>
-                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Archivos</h4>
-                                <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Archivos</h4>
+                                <div className="space-y-1.5">
                                     {currentFiles.map(file => (
                                         <div key={file.id}
                                             onClick={() => setSelectedFileId(selectedFileId === file.id ? null : file.id)}
-                                            className={`cursor-pointer p-2 rounded border flex items-center justify-between transition ${selectedFileId === file.id
-                                                ? 'bg-blue-100 border-blue-500 ring-1 ring-blue-500'
-                                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                                            className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all ${selectedFileId === file.id
+                                                ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
+                                                : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                                                 }`}
                                         >
                                             <div className="flex items-center overflow-hidden">
-                                                <FileIcon className={`w-4 h-4 mr-3 flex-shrink-0 ${selectedFileId === file.id ? 'text-blue-500' : 'text-gray-400'}`} />
+                                                <FileIcon className={`w-5 h-5 mr-3 flex-shrink-0 ${selectedFileId === file.id ? 'text-blue-500' : 'text-gray-400'}`} />
                                                 <span className={`truncate text-sm ${selectedFileId === file.id ? 'font-semibold text-blue-900' : 'text-gray-700'}`}>
                                                     {file.name}
                                                 </span>
                                             </div>
-                                            <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">{file.readable_size}</span>
+                                            <span className="text-xs text-gray-400 ml-3 whitespace-nowrap bg-gray-100 px-2 py-1 rounded">
+                                                {file.readable_size}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
@@ -203,31 +223,37 @@ export default function FileSelectorModal({
                         )}
 
                         {currentFolders.length === 0 && currentFiles.length === 0 && !isLoading && (
-                            <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                                <Cloud className="w-12 h-12 mb-2 text-gray-300" />
-                                <p className="text-sm">Carpeta vacía</p>
+                            <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                                    <Cloud className="w-8 h-8 text-gray-300" />
+                                </div>
+                                <p className="text-sm font-medium text-gray-500">Carpeta vacía</p>
+                                <p className="text-xs text-gray-400 mt-1">No hay archivos en esta ubicación</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>
+                <DialogFooter className="mt-4 gap-2">
+                    <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
                         Cancelar
                     </Button>
-                    <Button onClick={handleConfirm} disabled={!selectedFileId || isLoading}>
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                        Seleccionar
+                    <Button
+                        onClick={handleConfirm}
+                        disabled={!selectedFileId || isSubmitting}
+                        className="min-w-[120px]"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Vinculando...
+                            </>
+                        ) : (
+                            'Seleccionar'
+                        )}
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
     );
 }
-
-// Minimal UI Components (if not modifying existing generic ones, assume shadcn or similar available, 
-// if not I should create simple ones, but let's assume usage of `@/components/ui/...` implies they exist project-wide or I should create them.
-// Given strict instructions to NOT create non-requested infrastructure unless verified, usually I check, 
-// but asking user might be annoying.
-// I will check `components.json` which exists, so shadcn components likely exist or can be generated.
-// However `components/ui/dialog` might not exist. I should check `components/ui` dir.

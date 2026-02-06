@@ -51,6 +51,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             })
             .where(eq(norms.id, id));
 
+        if (id && body.pending_file_ids && Array.isArray(body.pending_file_ids)) {
+            try {
+                const { attachFileToModel } = await import("@/actions/files");
+                await Promise.all(body.pending_file_ids.map((fileId: number) =>
+                    attachFileToModel(fileId, "App\\Models\\Norm", id)
+                ));
+            } catch (fileError) {
+                console.error("Error attaching files:", fileError);
+            }
+        }
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Error updating norm:", error);

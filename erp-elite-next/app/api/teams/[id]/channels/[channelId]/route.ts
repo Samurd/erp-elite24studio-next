@@ -63,7 +63,7 @@ export async function PUT(
         if (!isOwner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
         const body = await request.json();
-        const { name, description } = body;
+        const { name, description, isPrivate } = body;
 
         const slug = name ? name.toLowerCase().replace(/ /g, '-') : undefined;
 
@@ -71,6 +71,7 @@ export async function PUT(
             .set({
                 ...(name && { name, slug }),
                 ...(description !== undefined && { description }),
+                ...(isPrivate !== undefined && { isPrivate }),
                 updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
             })
             .where(eq(teamChannels.id, cId));

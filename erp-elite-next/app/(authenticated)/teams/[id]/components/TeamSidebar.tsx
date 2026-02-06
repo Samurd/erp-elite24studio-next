@@ -246,9 +246,9 @@ function ChannelItem({
                     </span>
                 )}
 
-                {!channel.is_channel_member && !channel.isPrivate && (
+                {/* {!channel.is_channel_member && !channel.isPrivate && (
                     <span className="ml-auto text-[10px] text-blue-500 bg-blue-50 px-1 rounded">Ver</span>
-                )}
+                )} */}
             </button>
 
             {isOwner && !isSub && teamId && (

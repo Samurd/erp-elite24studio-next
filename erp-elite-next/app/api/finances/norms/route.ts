@@ -83,6 +83,17 @@ export async function POST(request: Request) {
             userId: session.user.id,
         }).returning({ id: norms.id });
 
+        if (newNorm?.id && body.pending_file_ids && Array.isArray(body.pending_file_ids)) {
+            try {
+                const { attachFileToModel } = await import("@/actions/files");
+                await Promise.all(body.pending_file_ids.map((fileId: number) =>
+                    attachFileToModel(fileId, "App\\Models\\Norm", newNorm.id)
+                ));
+            } catch (fileError) {
+                console.error("Error attaching files:", fileError);
+            }
+        }
+
         return NextResponse.json(newNorm);
     } catch (error) {
         console.error("Error creating norm:", error);

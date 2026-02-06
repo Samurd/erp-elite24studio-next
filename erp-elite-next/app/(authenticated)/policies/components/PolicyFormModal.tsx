@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -9,9 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import ModelAttachmentsCreator from "@/components/cloud/ModelAttachmentsCreator"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
-import { FileIcon, ExternalLink } from "lucide-react"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { RichSelect } from "@/components/ui/rich-select"
 import { DateService } from "@/lib/date-service"
 
@@ -35,9 +33,10 @@ export default function PolicyFormModal({
     userOptions
 }: PolicyFormModalProps) {
     const isView = mode === "view"
-    const isEdit = mode === "edit" || mode === "view" // View mode also needs to fetch
+    const isEdit = mode === "edit" || mode === "view"
 
     const queryClient = useQueryClient()
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
 
     // Fetch full policy details including files
     const { data: fetchedPolicy, isLoading } = useQuery({
@@ -61,11 +60,7 @@ export default function PolicyFormModal({
         issued_at: "",
         reviewed_at: "",
         description: "",
-        // content: "", // Not in schema, skipping
     })
-
-    const [files, setFiles] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([])
 
     useEffect(() => {
         if (activePolicy) {
@@ -74,11 +69,7 @@ export default function PolicyFormModal({
                 type_id: activePolicy.typeId?.toString() || "",
                 status_id: activePolicy.statusId?.toString() || "",
                 assigned_to_id: activePolicy.assignedToId?.toString() || "",
-                issued_at: activePolicy.issuedAt ? new Date(activePolicy.issuedAt).toISOString().split('T')[0] : "", // Still using split T for input value if it's YYYY-MM-DD
-                // Actually DateService might not have a helper for "YYYY-MM-DD" conversion from DB string if it's already YYYY-MM-DD?
-                // The DB returns string for date mode.
-                // Let's stick to split('T')[0] if it works or use a helper if DateService has one for input.
-                // DateService.todayInput() gives YYYY-MM-DD.
+                issued_at: activePolicy.issuedAt ? new Date(activePolicy.issuedAt).toISOString().split('T')[0] : "",
                 reviewed_at: activePolicy.reviewedAt ? new Date(activePolicy.reviewedAt).toISOString().split('T')[0] : "",
                 description: activePolicy.description || "",
             })
@@ -95,36 +86,16 @@ export default function PolicyFormModal({
         }
     }, [activePolicy, open])
 
-    useEffect(() => {
-        if (!open) {
-            setFiles([])
-            setPendingCloudFiles([])
-        }
-    }, [open])
-
     const mutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const url = isEdit ? `/api/policies/${activePolicy.id}` : "/api/policies"
             const method = isEdit ? "PUT" : "POST"
 
-            const uploadedFileIds = []
-            const { uploadFile } = await import("@/actions/files") // Dynamic import
+            // 1. Upload/Get Files (Unified Logic)
+            const fileIds = await attachmentsRef.current?.upload() || []
 
-            if (files.length > 0) {
-                for (const file of files) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const res = await uploadFile(formData)
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id)
-                    }
-                }
-            }
-
-            const pendingIds = pendingCloudFiles.map(f => f.id)
-            const allFileIds = [...uploadedFileIds, ...pendingIds]
-
-            const payload = { ...data, pending_file_ids: allFileIds }
+            // 2. Prepare Payload
+            const payload = { ...data, pending_file_ids: fileIds }
 
             const res = await fetch(url, {
                 method,
@@ -230,13 +201,6 @@ export default function PolicyFormModal({
 
                         {/* Assigned To */}
                         <div className="space-y-2">
-                            {/* Label handled inside RichSelect or we can keep it here but RichSelect usually has its own or we pass placeholder.
-                                Warning: RichSelect might not have a label prop based on previous usage in other modals (e.g. CaseRecordFormModal).
-                                Let's check RichSelect usage. It usually takes placeholder.
-                                We will keep the Label component above it if RichSelect doesn't render one, or remove it if RichSelect handles it?
-                                Previous usage in user prompt: <InputLabel ... /> <RichSelect ... />
-                                I'll keep the div wrapper.
-                             */}
                             <Label>Responsable</Label>
                             <RichSelect
                                 value={formData.assigned_to_id}
@@ -285,54 +249,23 @@ export default function PolicyFormModal({
                             />
                         </div>
 
-                        {/* Attachments */}
+                        {/* Attachments (Unified) */}
                         <div className="md:col-span-2 space-y-2">
                             <Label className="mb-2 block">Archivos Adjuntos</Label>
-                            {isView ? (
-                                <div className="bg-gray-50 rounded-lg p-4 border border-dashed text-sm">
-                                    {activePolicy && activePolicy.files && activePolicy.files.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {activePolicy.files.map((file: any) => (
-                                                <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded shadow-sm">
-                                                    <div className="flex items-center space-x-2 truncate">
-                                                        <FileIcon className="w-4 h-4 text-gray-500" />
-                                                        <span className="truncate">{file.name}</span>
-                                                    </div>
-                                                    <a
-                                                        href={file.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800"
-                                                    >
-                                                        <ExternalLink className="w-4 h-4" />
-                                                    </a>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-400 italic">No hay archivos adjuntos.</span>
-                                    )}
-                                </div>
-                            ) : isEdit ? (
-                                activePolicy && (
-                                    <ModelAttachments
-                                        initialFiles={activePolicy.files || []}
-                                        modelId={activePolicy.id}
-                                        modelType="App\Models\Policy"
-                                        onUpdate={() => {
-                                            queryClient.invalidateQueries({ queryKey: ["policy", activePolicy.id] })
-                                            queryClient.invalidateQueries({ queryKey: ["policies"] })
-                                        }}
-                                    />
-                                )
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={files}
-                                    onFilesChange={setFiles}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="politicas"
+                                initialFiles={activePolicy?.files || []}
+                                modelId={activePolicy?.id}
+                                modelType="App\Models\Policy"
+                                readOnly={isView}
+                                onUpdate={() => {
+                                    if (activePolicy?.id) {
+                                        queryClient.invalidateQueries({ queryKey: ["policy", activePolicy.id] })
+                                        queryClient.invalidateQueries({ queryKey: ["policies"] })
+                                    }
+                                }}
+                            />
                         </div>
                     </div>
 

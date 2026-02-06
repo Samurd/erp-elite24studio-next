@@ -9,7 +9,9 @@ import { uploadFile } from '@/actions/files';
 import { ChannelSettingsModal } from './ChannelSettingsModal';
 import ChatHeader from './channel-chat/ChatHeader';
 import MessageList from './channel-chat/MessageList';
+
 import MessageInput from './channel-chat/MessageInput';
+import { ModelAttachmentsRef } from '@/components/cloud/ModelAttachments';
 
 interface ChannelChatProps {
     teamId: number;
@@ -30,10 +32,11 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
 
     // UI States
     const [isSending, setIsSending] = useState(false);
-    const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<any[]>([]);
     const [showAttachments, setShowAttachments] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [fileCount, setFileCount] = useState(0);
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null);
+
 
     // Typing Indicator
     const [isTyping, setIsTyping] = useState(false);
@@ -63,7 +66,7 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
         isFetchingNextPage
     } = useInfiniteQuery({
         queryKey: ['channel-messages', channel.id],
-        queryFn: async ({ pageParam }) => {
+        queryFn: async ({ pageParam }: { pageParam: any }) => {
             const url = new URL(`/api/teams/${teamId}/channels/${channel.id}/messages`, window.location.origin);
             if (pageParam) {
                 url.searchParams.set('beforeId', pageParam.toString());
@@ -264,29 +267,15 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
         e?.preventDefault();
         // Strip HTML tags to check if empty (basic check)
         const strippedContent = content.replace(/<[^>]*>/g, '').trim();
-        if ((!strippedContent && attachedFiles.length === 0 && pendingCloudFiles.length === 0) || !socket || !session?.user || isSending) return;
+        if ((!strippedContent && fileCount === 0) || !socket || !session?.user || isSending) return;
 
         setIsSending(true);
 
+        const tempId = Date.now();
+
         try {
-            // 1. Upload local files
-            const uploadedFileIds: number[] = [];
-            if (attachedFiles.length > 0) {
-                for (const file of attachedFiles) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const res = await uploadFile(formData);
-                    if (res.success && res.file) {
-                        uploadedFileIds.push(res.file.id);
-                    }
-                }
-            }
-
-            // 2. Cloud files
-            const cloudFileIds = pendingCloudFiles.map(f => f.id);
-            const allFileIds = [...uploadedFileIds, ...cloudFileIds];
-
-            const tempId = Date.now();
+            // 1. Upload files via ModelAttachments
+            const allFileIds = await attachmentsRef.current?.upload() || [];
 
             // Use immediate parent ID for recursive threading structure
             const finalParentId = replyingTo?.id;
@@ -300,7 +289,8 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
                 userImage: session.user.image,
                 createdAt: new Date().toISOString(),
                 isOptimistic: true,
-                files: [...attachedFiles.map(f => ({ name: f.name })), ...pendingCloudFiles],
+
+                files: allFileIds.map(id => ({ id, name: 'Archivo adjunto' })), // Simplified optimistic update
                 parentId: finalParentId,
                 parentMessage: replyingTo ? {
                     id: replyingTo.id,
@@ -317,9 +307,8 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
             // UI Update
             setMessages(prev => Array.isArray(prev) ? [...prev, optimisticMsg] : [optimisticMsg]);
             setContent('');
-            setAttachedFiles([]);
-            setPendingCloudFiles([]);
             setShowAttachments(false);
+            attachmentsRef.current?.clear();
             setReplyingTo(null);
 
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
@@ -512,10 +501,6 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
                 handleSend={handleSend}
                 handleEditorChange={handleEditorChange}
                 isSending={isSending}
-                attachedFiles={attachedFiles}
-                setAttachedFiles={setAttachedFiles}
-                pendingCloudFiles={pendingCloudFiles}
-                setPendingCloudFiles={setPendingCloudFiles}
                 replyingTo={replyingTo}
                 setReplyingTo={setReplyingTo}
                 channelName={channel.name}
@@ -523,6 +508,9 @@ export function ChannelChat({ teamId, channel, isOwner }: ChannelChatProps) {
                 setShowAttachments={setShowAttachments}
                 showEmojiPicker={showEmojiPicker}
                 setShowEmojiPicker={setShowEmojiPicker}
+                attachmentsRef={attachmentsRef}
+                onFileCountChange={setFileCount}
+                fileCount={fileCount}
             />
 
             <ChannelSettingsModal

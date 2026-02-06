@@ -25,10 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichSelect } from "@/components/ui/rich-select"
 import MoneyInput from "@/components/ui/money-input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { DateService } from "@/lib/date-service"
-import ModelAttachments from "@/components/cloud/ModelAttachments"
-import ModelAttachmentsCreator, { PendingFile } from "@/components/cloud/ModelAttachmentsCreator"
+import ModelAttachments, { ModelAttachmentsRef } from "@/components/cloud/ModelAttachments"
 import { uploadFile, attachFileToModel } from "@/actions/files"
 
 const EMPTY_FILES: any[] = []
@@ -58,6 +57,8 @@ interface ContractFormModalProps {
     scheduleOptions: any[]
 }
 
+// ... imports remain the same, just remove ModelAttachmentsCreator usage below
+
 export function ContractFormModal({
     open,
     onClose,
@@ -71,12 +72,12 @@ export function ContractFormModal({
 }: ContractFormModalProps) {
     const queryClient = useQueryClient()
     const isEditing = !!contract
+    const attachmentsRef = useRef<ModelAttachmentsRef>(null)
     const [currentData, setCurrentData] = useState<any>(contract || null)
-    const [filesToUpload, setFilesToUpload] = useState<File[]>([])
-    const [pendingCloudFiles, setPendingCloudFiles] = useState<PendingFile[]>([])
 
     useEffect(() => {
         const fetchFullData = async () => {
+            // ... existing fetch logic
             if (contract?.id && open) {
                 const url = `/api/rrhh/contracts/${contract.id}?t=${Date.now()}`
                 try {
@@ -86,7 +87,6 @@ export function ContractFormModal({
                         setCurrentData(fullData)
                     } else {
                         console.error(`Failed to fetch contract data from ${url}. Status: ${res.status}`)
-                        // Keep contract data if fetch fails but we have props
                         if (!currentData) setCurrentData(contract)
                     }
                 } catch (error) {
@@ -107,8 +107,6 @@ export function ContractFormModal({
                 if (res.ok) {
                     const freshData = await res.json()
                     setCurrentData(freshData)
-                } else {
-                    console.error(`Failed to refresh contract data from ${url}. Status: ${res.status}`)
                 }
             } catch (error) {
                 console.error(`Error refreshing data from ${url}:`, error)
@@ -153,8 +151,6 @@ export function ContractFormModal({
                 amount: 0,
                 schedule_id: "",
             })
-            setFilesToUpload([])
-            setPendingCloudFiles([])
         }
     }, [contract, isEditing, form, open])
 
@@ -166,6 +162,9 @@ export function ContractFormModal({
 
             const method = isEditing ? "PUT" : "POST"
 
+            // 1. Upload files
+            const fileIds = await attachmentsRef.current?.upload() || []
+
             const payload = {
                 ...data,
                 start_date: DateService.toDB(data.start_date),
@@ -175,6 +174,7 @@ export function ContractFormModal({
                 category_id: parseInt(data.category_id),
                 status_id: parseInt(data.status_id),
                 schedule_id: data.schedule_id ? parseInt(data.schedule_id) : null,
+                pending_file_ids: fileIds
             }
 
             const res = await fetch(url, {
@@ -184,35 +184,13 @@ export function ContractFormModal({
             })
 
             if (!res.ok) throw new Error("Error saving contract")
-            const result = await res.json()
-
-            // Handle File Uploads if creating new contract
-            if (!isEditing && result.id) {
-                // 1. Upload new files
-                for (const file of filesToUpload) {
-                    const formData = new FormData()
-                    formData.append('file', file)
-                    const uploadRes = await uploadFile(formData)
-                    if (uploadRes.success && uploadRes.file) {
-                        await attachFileToModel(uploadRes.file.id, "App\\Models\\Contract", result.id)
-                    }
-                }
-
-                // 2. Attach cloud files
-                for (const file of pendingCloudFiles) {
-                    await attachFileToModel(file.id, "App\\Models\\Contract", result.id)
-                }
-            }
-
-            return result
+            return res.json()
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["contracts"] })
             toast.success(isEditing ? "Contrato actualizado" : "Contrato creado")
             onClose()
             form.reset()
-            setFilesToUpload([])
-            setPendingCloudFiles([])
         },
         onError: () => {
             toast.error("Error al guardar el contrato")
@@ -459,23 +437,17 @@ export function ContractFormModal({
                         </fieldset>
                         <div className="mt-6 border-t pt-4">
                             <h3 className="text-lg font-semibold mb-4">Archivos Adjuntos</h3>
-                            {currentData && currentData.id ? (
-                                <ModelAttachments
-                                    modelType="App\\Models\\Contract"
-                                    modelId={currentData.id}
-                                    initialFiles={currentData.files || EMPTY_FILES}
-                                    onUpdate={refreshData}
-                                    readOnly={isReadOnly}
-                                />
-                            ) : (
-                                <ModelAttachmentsCreator
-                                    files={filesToUpload}
-                                    onFilesChange={setFilesToUpload}
-                                    pendingCloudFiles={pendingCloudFiles}
-                                    onPendingCloudFilesChange={setPendingCloudFiles}
-                                />
-                            )}
+                            <ModelAttachments
+                                ref={attachmentsRef}
+                                areaSlug="rrhh"
+                                modelType="App\Models\Contract"
+                                modelId={currentData?.id}
+                                initialFiles={currentData?.files || EMPTY_FILES}
+                                onUpdate={refreshData}
+                                readOnly={isReadOnly}
+                            />
                         </div>
+
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={onClose}>
